@@ -1,0 +1,131 @@
+# =====================================
+# STREAKFARM - GITIGNORE
+# =====================================
+
+# ============ CRITICAL - SECRETS ============
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# Secrets and credentials
+*.pem
+*.key
+*.p12
+*.cert
+*.crt
+secrets/
+credentials/
+config.local.js
+config.local.json
+
+# ============ DEPENDENCIES ============
+node_modules/
+.pnp
+.pnp.js
+
+# ============ BUILD OUTPUTS ============
+# Next.js
+.next/
+out/
+build/
+dist/
+
+# Vercel
+.vercel/
+
+# Turbo
+.turbo/
+
+# Production builds
+*.tsbuildinfo
+next-env.d.ts
+
+# ============ TESTING ============
+coverage/
+.nyc_output/
+*.lcov
+
+# ============ LOGS ============
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+pnpm-debug.log*
+
+# ============ OS FILES ============
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ============ IDE / EDITORS ============
+# VSCode
+.vscode/
+*.code-workspace
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ============ DATABASE ============
+*.sql
+*.dump
+*.sqlite
+*.sqlite3
+backup/
+db-backup/
+
+# ============ TERRAFORM ============
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# ============ DOCKER ============
+*.pid
+*.seed
+*.pid.lock
+
+# ============ MISC ============
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Cache directories
+.cache/
+.parcel-cache/
+.npm/
+.eslintcache
+.stylelintcache
+
+# Local development
+.local/
+
+# ============ CUSTOM ============
+notes.txt
+todo.txt
+.scratch/
+generate-structure.sh
