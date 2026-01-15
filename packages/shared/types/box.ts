@@ -1,48 +1,38 @@
-export enum BoxType {
-  HOURLY = 'hourly',
-  DAILY_BONUS = 'daily_bonus',
-  STREAK_MILESTONE = 'streak_milestone',
-  REFERRAL_REWARD = 'referral_reward',
-  TASK_COMPLETION = 'task_completion',
-}
+export type BoxRarity = 'common' | 'rare' | 'legendary';
 
 export interface Box {
   id: string;
   user_id: string;
-  type: BoxType;
-  
-  // Rewards
-  points_min: number;
-  points_max: number;
-  points_awarded: number | null;
-  
-  // State
-  is_opened: boolean;
+  generated_at: Date;
+  expires_at: Date;
   opened_at: Date | null;
-  
-  // Metadata
+  base_points: number;
   multiplier_applied: number;
-  special_reward: string | null;
-  
-  created_at: Date;
-  expires_at: Date | null;
-}
-
-export interface BoxConfig {
-  type: BoxType;
-  points_min: number;
-  points_max: number;
-  cooldown_minutes: number;
-  max_per_day: number;
-  requires_streak?: number;
+  final_points: number;
+  rarity: BoxRarity;
+  is_expired: boolean;
 }
 
 export interface BoxOpenResult {
   box_id: string;
-  points_awarded: number;
-  multiplier_applied: number;
-  total_points: number;
-  new_user_total: number;
-  special_reward: string | null;
-  animation: string;
+  rarity: BoxRarity;
+  base_points: number;
+  multiplier: number;
+  final_points: number;
+  badges_earned: string[];
 }
+
+export const BOX_RARITY_CHANCES = {
+  legendary: 0.001,
+  rare: 0.05,
+  common: 0.949,
+} as const;
+
+export const BOX_POINT_RANGES = {
+  common: { min: 50, max: 1000 },
+  rare: { min: 5000, max: 10000 },
+  legendary: { min: 10000, max: 50000 },
+} as const;
+
+export const BOX_EXPIRY_HOURS = 3;
+export const BOXES_PER_DAY = 24;
