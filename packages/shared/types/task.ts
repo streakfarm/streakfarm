@@ -1,71 +1,35 @@
-export enum TaskType {
-  SOCIAL_FOLLOW = 'social_follow',
-  SOCIAL_SHARE = 'social_share',
-  SOCIAL_RETWEET = 'social_retweet',
-  SOCIAL_JOIN = 'social_join',
-  WALLET_CONNECT = 'wallet_connect',
-  REFERRAL = 'referral',
-  DAILY_CHECKIN = 'daily_checkin',
-  WATCH_AD = 'watch_ad',
-  CUSTOM = 'custom',
-}
-
-export enum TaskStatus {
-  AVAILABLE = 'available',
-  IN_PROGRESS = 'in_progress',
-  PENDING_VERIFICATION = 'pending_verification',
-  COMPLETED = 'completed',
-  EXPIRED = 'expired',
-}
+export type TaskType = 'social' | 'invite' | 'watch_ad' | 'daily' | 'wallet' | 'custom';
+export type TaskStatus = 'pending' | 'verifying' | 'completed' | 'failed';
 
 export interface Task {
   id: string;
   title: string;
   description: string;
-  type: TaskType;
-  
-  // Rewards
-  points_reward: number;
-  box_reward: boolean;
-  
-  // Requirements
+  task_type: TaskType;
+  points: number;
+  icon_emoji: string;
   action_url: string | null;
-  verification_type: string;
-  
-  // Constraints
+  requires_wallet: boolean;
   is_repeatable: boolean;
-  cooldown_hours: number | null;
+  repeat_interval_hours: number | null;
   max_completions: number | null;
-  
-  // Visibility
+  verification_type: 'auto' | 'manual' | 'api';
+  verification_config: Record<string, any>;
   is_active: boolean;
-  start_date: Date | null;
-  end_date: Date | null;
-  
-  // Metadata
-  icon: string;
-  priority: number;
-  total_completions: number;
-  
+  available_from: Date | null;
+  available_until: Date | null;
+  display_order: number;
   created_at: Date;
-  updated_at: Date;
 }
 
-export interface UserTask {
+export interface TaskCompletion {
   id: string;
   user_id: string;
   task_id: string;
-  
   status: TaskStatus;
-  completions_count: number;
-  
-  started_at: Date | null;
+  points_awarded: number;
   completed_at: Date | null;
-  next_available_at: Date | null;
-  
+  verification_data: Record<string, any> | null;
   created_at: Date;
-  updated_at: Date;
-  
-  // Joined data
   task?: Task;
 }
