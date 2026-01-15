@@ -1,42 +1,22 @@
-export enum BadgeCategory {
-  STREAK = 'streak',
-  POINTS = 'points',
-  BOXES = 'boxes',
-  TASKS = 'tasks',
-  REFERRALS = 'referrals',
-  SPECIAL = 'special',
-}
-
-export enum BadgeRarity {
-  COMMON = 'common',
-  RARE = 'rare',
-  EPIC = 'epic',
-  LEGENDARY = 'legendary',
-}
+export type BadgeCategory = 'streak' | 'achievement' | 'wallet' | 'special';
+export type BadgeRarity = 'common' | 'rare' | 'epic' | 'legendary';
 
 export interface Badge {
   id: string;
   name: string;
   description: string;
-  category: BadgeCategory;
+  icon_emoji: string;
+  image_url: string | null;
+  badge_category: BadgeCategory;
+  multiplier: number;
   rarity: BadgeRarity;
-  
-  // Unlock requirements
-  requirement_type: string;
-  requirement_value: number;
-  
-  // Rewards
-  points_reward: number;
-  multiplier_bonus: number;
-  
-  // Visual
-  icon_url: string;
-  color: string;
-  
-  // Meta
-  total_earned: number;
+  requirements: Record<string, any>;
+  max_supply: number | null;
+  current_supply: number;
   is_active: boolean;
-  
+  available_from: Date | null;
+  available_until: Date | null;
+  can_convert_to_nft: boolean;
   created_at: Date;
 }
 
@@ -44,28 +24,18 @@ export interface UserBadge {
   id: string;
   user_id: string;
   badge_id: string;
-  
-  // Progress
-  progress_current: number;
-  progress_required: number;
-  is_unlocked: boolean;
-  
-  // Metadata
-  unlocked_at: Date | null;
-  created_at: Date;
-  
-  // Joined data
+  earned_at: Date;
+  is_active: boolean;
+  converted_to_nft: boolean;
+  nft_address: string | null;
+  converted_at: Date | null;
   badge?: Badge;
 }
 
 export interface BadgeProgress {
-  badge_id: string;
-  badge_name: string;
-  category: BadgeCategory;
-  rarity: BadgeRarity;
-  progress_current: number;
-  progress_required: number;
-  progress_percentage: number;
+  badge: Badge;
+  current: number;
+  required: number;
+  percentage: number;
   is_unlocked: boolean;
-  icon_url: string;
 }
