@@ -1,23 +1,24 @@
 import { z } from 'zod';
 
-export const TelegramIdSchema = z.number().int().positive();
-
-export const UsernameSchema = z
-  .string()
-  .min(3)
-  .max(32)
-  .regex(/^[a-zA-Z0-9_]+$/)
-  .nullable();
-
-export const WalletAddressSchema = z
-  .string()
-  .regex(/^EQ[a-zA-Z0-9_-]{46}$/, 'Invalid TON wallet address');
-
-export const PointsSchema = z.number().int().min(0);
-
-export const StreakSchema = z.number().int().min(0);
-
-export const PaginationSchema = z.object({
-  page: z.number().int().min(1).default(1),
-  per_page: z.number().int().min(1).max(100).default(20),
+export const telegramInitDataSchema = z.object({
+  user: z.object({
+    id: z.number(),
+    first_name: z.string(),
+    last_name: z.string().optional(),
+    username: z.string().optional(),
+    language_code: z.string().optional(),
+  }),
+  auth_date: z.number(),
+  hash: z.string(),
 });
+
+export const walletAddressSchema = z
+  .string()
+  .regex(/^[UEk][Qf][a-zA-Z0-9_-]{46}$/, 'Invalid TON address');
+
+export const paginationSchema = z.object({
+  page: z.number().int().positive().default(1),
+  limit: z.number().int().positive().max(100).default(20),
+});
+
+export const uuidSchema = z.string().uuid();
