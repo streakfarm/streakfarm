@@ -2,55 +2,54 @@ export interface User {
   id: string;
   telegram_id: number;
   username: string | null;
-  first_name: string;
-  last_name: string | null;
-  photo_url: string | null;
-  language_code: string | null;
-  
-  // Points & Streaks
-  total_points: number;
-  current_streak: number;
-  longest_streak: number;
+  first_name: string | null;
+  language_code: string;
+  raw_points: number;
+  streak_current: number;
+  streak_best: number;
   last_checkin: Date | null;
-  
-  // Multipliers
-  base_multiplier: number;
-  badge_multiplier: number;
-  total_multiplier: number;
-  
-  // Stats
   total_boxes_opened: number;
   total_tasks_completed: number;
   total_referrals: number;
-  
-  // Wallet
   wallet_address: string | null;
-  wallet_connected: boolean;
-  
-  // Meta
-  is_early_adopter: boolean;
-  is_founding_member: boolean;
-  user_number: number;
-  
+  wallet_type: string | null;
+  wallet_connected_at: Date | null;
+  multiplier_permanent: number;
+  joined_at: Date;
+  ref_code: string;
+  referred_by: string | null;
+  fingerprint: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  is_flagged: boolean;
+  flag_reason: string | null;
+  is_banned: boolean;
+  ban_reason: string | null;
+  is_bot: boolean;
   created_at: Date;
   updated_at: Date;
+  last_active_at: Date;
 }
+
+export type UserPublic = Pick<
+  User,
+  | 'id'
+  | 'username'
+  | 'first_name'
+  | 'raw_points'
+  | 'streak_current'
+  | 'streak_best'
+  | 'total_referrals'
+  | 'multiplier_permanent'
+  | 'joined_at'
+>;
 
 export interface UserStats {
-  total_users: number;
-  active_today: number;
-  active_this_week: number;
-  total_points_distributed: number;
-  total_boxes_opened: number;
-  average_streak: number;
-}
-
-export interface UserRank {
-  user_id: string;
-  username: string | null;
-  first_name: string;
-  photo_url: string | null;
-  total_points: number;
-  current_streak: number;
   rank: number;
+  total_users: number;
+  percentile: number;
+  boxes_today: number;
+  points_today: number;
+  badges_count: number;
+  total_multiplier: number;
 }
