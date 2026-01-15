@@ -1,30 +1,18 @@
-export enum LeaderboardType {
-  GLOBAL = 'global',
-  FRIENDS = 'friends',
-  WEEKLY = 'weekly',
-  MONTHLY = 'monthly',
-}
-
 export interface LeaderboardEntry {
   rank: number;
   user_id: string;
-  telegram_id: number;
   username: string | null;
-  first_name: string;
-  photo_url: string | null;
-  
-  total_points: number;
-  current_streak: number;
-  
-  // Change indicators
-  rank_change: number | null;
-  points_change: number | null;
+  first_name: string | null;
+  raw_points: number;
+  streak_current: number;
+  badges_count: number;
+  total_multiplier: number;
+  is_current_user?: boolean;
 }
 
-export interface LeaderboardData {
-  type: LeaderboardType;
+export interface LeaderboardResponse {
   entries: LeaderboardEntry[];
-  user_rank: number | null;
+  current_user: LeaderboardEntry | null;
   total_users: number;
-  updated_at: Date;
+  last_updated: Date;
 }
