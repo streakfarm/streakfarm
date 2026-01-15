@@ -1,38 +1,51 @@
 export function formatPoints(points: number): string {
-  if (points >= 1000000) {
-    return `${(points / 1000000).toFixed(1)}M`;
+  if (points >= 1_000_000_000) {
+    return `${(points / 1_000_000_000).toFixed(2)}B`;
   }
-  if (points >= 1000) {
-    return `${(points / 1000).toFixed(1)}K`;
+  if (points >= 1_000_000) {
+    return `${(points / 1_000_000).toFixed(2)}M`;
   }
-  return points.toString();
-}
-
-export function formatStreak(streak: number): string {
-  return `${streak} 🔥`;
+  if (points >= 1_000) {
+    return `${(points / 1_000).toFixed(2)}K`;
+  }
+  return points.toLocaleString();
 }
 
 export function formatMultiplier(multiplier: number): string {
-  return `${multiplier.toFixed(2)}×`;
+  return `${multiplier.toFixed(1)}×`;
 }
 
-export function formatRank(rank: number): string {
-  if (rank === 1) return '🥇';
-  if (rank === 2) return '🥈';
-  if (rank === 3) return '🥉';
-  return `#${rank}`;
+export function formatDate(date: Date): string {
+  return new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(date);
 }
 
-export function formatTimeAgo(date: Date): string {
+export function formatRelativeTime(date: Date): string {
   const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
 
-  if (days > 0) return `${days}d ago`;
-  if (hours > 0) return `${hours}h ago`;
-  if (minutes > 0) return `${minutes}m ago`;
-  return 'Just now';
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return formatDate(date);
+}
+
+export function formatCountdown(targetDate: Date): string {
+  const now = new Date();
+  const diffMs = targetDate.getTime() - now.getTime();
+
+  if (diffMs <= 0) return '00:00:00';
+
+  const hours = Math.floor(diffMs / 3600000);
+  const mins = Math.floor((diffMs % 3600000) / 60000);
+  const secs = Math.floor((diffMs % 60000) / 1000);
+
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
