@@ -1,0 +1,13 @@
+project_id = "syiiwghtbeklazlmikne"
+
+[functions.telegram-auth]
+verify_jwt = false
+
+[functions.open-box]
+verify_jwt = false
+
+[functions.complete-task]
+verify_jwt = false
+
+[functions.daily-checkin]
+verify_jwt = false
