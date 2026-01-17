@@ -39,81 +39,93 @@ const Profile = () => {
 
   return (
     <AppLayout>
-      <div className="p-6 space-y-6">
+      <div className="p-4 space-y-4">
         {/* Profile Header */}
-        <Card className="bg-gray-800 border-gray-700">
-          <CardHeader>
-            <div className="flex items-center justify-center mb-4">
-              <div className="w-20 h-20 bg-green-600 rounded-full flex items-center justify-center">
-                <UserIcon className="w-10 h-10 text-white" />
-              </div>
-            </div>
-            <CardTitle className="text-center text-2xl">
+        <div className="flex items-center space-x-4 bg-gray-800/50 rounded-lg p-4 border border-gray-700">
+          <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-pink-500 rounded-full flex items-center justify-center">
+            <UserIcon className="w-8 h-8 text-white" />
+          </div>
+          <div className="flex-1">
+            <h2 className="text-xl font-bold">
               {user.first_name || 'User'} {user.last_name || ''}
-            </CardTitle>
+            </h2>
             {user.username && (
-              <p className="text-center text-gray-400">@{user.username}</p>
+              <p className="text-sm text-gray-400">@{user.username}</p>
             )}
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="text-center">
-              <p className="text-sm text-gray-400">Telegram ID</p>
-              <p className="text-lg font-mono">{user.telegram_id}</p>
-            </div>
-          </CardContent>
-        </Card>
+            <p className="text-xs text-gray-500 font-mono mt-1">
+              ID: {user.telegram_id}
+            </p>
+          </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-3 gap-3">
+          <Card className="bg-gray-800/50 border-gray-700">
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-yellow-400">
+                {user.total_points || 0}
+              </div>
+              <div className="text-xs text-gray-400 mt-1">Points</div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gray-800/50 border-gray-700">
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-orange-400">
+                {user.current_streak || 0}
+              </div>
+              <div className="text-xs text-gray-400 mt-1">Day Streak</div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gray-800/50 border-gray-700">
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-purple-400">
+                {user.referral_count || 0}
+              </div>
+              <div className="text-xs text-gray-400 mt-1">Referrals</div>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Referral Card */}
-        <Card className="bg-gray-800 border-gray-700">
+        <Card className="bg-gray-800/50 border-gray-700">
           <CardHeader>
-            <CardTitle className="text-xl">Your Referral Code</CardTitle>
+            <CardTitle className="text-lg flex items-center">
+              🎁 Your Referral Code
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="bg-gray-900 p-4 rounded-lg text-center">
-              <p className="text-3xl font-bold text-green-400 font-mono">
+          <CardContent className="space-y-3">
+            <div className="bg-gray-900 p-4 rounded-lg text-center border border-gray-700">
+              <p className="text-2xl font-bold text-green-400 font-mono tracking-wider">
                 {user.referral_code || 'Loading...'}
               </p>
             </div>
             
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2">
               <Button
                 onClick={copyReferralCode}
                 variant="outline"
-                className="w-full"
+                size="sm"
+                className="w-full border-gray-600 hover:bg-gray-700"
               >
                 <Copy className="mr-2 h-4 w-4" />
-                Copy Code
+                Copy
               </Button>
               
               <Button
                 onClick={shareReferral}
-                className="w-full bg-green-600 hover:bg-green-700"
+                size="sm"
+                className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600"
               >
                 <Share2 className="mr-2 h-4 w-4" />
                 Share
               </Button>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Stats Card */}
-        <Card className="bg-gray-800 border-gray-700">
-          <CardHeader>
-            <CardTitle className="text-xl">Your Stats</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-gray-400">Total Points</span>
-              <span className="font-bold text-green-400">{user.total_points || 0}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Current Streak</span>
-              <span className="font-bold text-green-400">{user.current_streak || 0} days</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Referrals</span>
-              <span className="font-bold text-green-400">{user.referral_count || 0}</span>
-            </div>
+            <p className="text-xs text-center text-gray-400">
+              Invite friends and earn bonus points! 🎉
+            </p>
           </CardContent>
         </Card>
       </div>
