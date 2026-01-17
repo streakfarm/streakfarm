@@ -1,5 +1,10 @@
-import { createRoot } from "react-dom/client";
-import App from "./App.tsx";
-import "./index.css";
+console.log("MAIN STARTED");
 
-createRoot(document.getElementById("root")!).render(<App />);
+import React from "react";
+import ReactDOM from "react-dom/client";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <div style={{ color: "black", padding: 20 }}>
+    <h1>StreakFarm booted</h1>
+  </div>
+);
