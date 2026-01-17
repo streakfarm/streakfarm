@@ -1,9 +1,8 @@
 import { ReactNode, useEffect } from 'react';
 import { useTelegram } from '@/hooks/useTelegram';
-import  BottomNav  from '@/components/navigation/BottomNav';
+import { BottomNav } from '@/components/navigation/BottomNav';  // ← ADD CURLY BRACES
 import { TopHeader } from '@/components/layout/TopHeader';
 import { FloatingCTA } from '@/components/gamification/FloatingCTA';
-import { motion } from 'framer-motion';
 
 interface AppLayoutProps {
   children: ReactNode;
