@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Share2, Copy } from "lucide-react";
 import { toast } from "sonner";
-import Navigation from "@/components/Navigation";
+import BottomNav from "@/components/navigation/BottomNav";
 
 const Profile = () => {
   const { user, isAuthenticated } = useAuth();
@@ -110,7 +110,7 @@ const Profile = () => {
           </CardContent>
         </Card>
 
-        {/* Debug Info (Remove in production) */}
+        {/* Debug Info */}
         <Card className="bg-gray-800 border-gray-700 opacity-50">
           <CardHeader>
             <CardTitle className="text-sm">Debug Info</CardTitle>
@@ -123,7 +123,7 @@ const Profile = () => {
         </Card>
       </div>
 
-      <Navigation />
+      <BottomNav />
     </div>
   );
 };
