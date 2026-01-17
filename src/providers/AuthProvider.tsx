@@ -13,122 +13,93 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
 });
 
-declare global {
-  interface Window {
-    Telegram?: any;
-  }
-}
-
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<any>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const initAuth = async () => {
-      await new Promise(resolve => setTimeout(resolve, 500));
-
+    const saveUserToSupabase = async (telegramUser: any) => {
       try {
-        const tg = window.Telegram?.WebApp;
+        console.log('💾 Saving to Supabase:', telegramUser);
+
+        const referralCode = `SF${telegramUser.id.toString(36).toUpperCase()}`;
         
-        if (!tg) {
-          console.log('Not in Telegram');
-          setIsLoading(false);
-          return;
-        }
+        const userData = {
+          telegram_id: telegramUser.id,
+          username: telegramUser.username || `user${telegramUser.id}`,
+          first_name: telegramUser.first_name || 'User',
+          last_name: telegramUser.last_name || '',
+          photo_url: telegramUser.photo_url || null,
+          referral_code: referralCode,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
 
-        tg.ready();
-        tg.expand();
-        
-        const tgUser = tg.initDataUnsafe?.user;
-        
-        if (!tgUser) {
-          console.log('No Telegram user');
-          setIsLoading(false);
-          return;
-        }
+        console.log('📝 User data to insert:', userData);
 
-        console.log('📱 Telegram User:', tgUser);
-
-        // Generate referral code
-        const referralCode = `SF${tgUser.id.toString(36).toUpperCase()}`;
-        const now = new Date().toISOString();
-
-        // Check if user exists
-        const { data: existingUser } = await supabase
+        // Try to insert
+        const { data, error } = await supabase
           .from('profiles')
-          .select('*')
-          .eq('telegram_id', tgUser.id)
+          .upsert(userData, {
+            onConflict: 'telegram_id',
+          })
+          .select()
           .single();
 
-        let userData;
-
-        if (existingUser) {
-          // Update existing user
-          const { data, error } = await supabase
-            .from('profiles')
-            .update({
-              username: tgUser.username || null,
-              first_name: tgUser.first_name || '',
-              last_name: tgUser.last_name || null,
-              photo_url: tgUser.photo_url || null,
-              updated_at: now,
-            })
-            .eq('telegram_id', tgUser.id)
-            .select()
-            .single();
-
-          if (error) {
-            console.error('Update error:', error);
-            userData = existingUser;
-          } else {
-            userData = data;
-            console.log('✅ User updated in Supabase');
-          }
-        } else {
-          // Insert new user
-          const { data, error } = await supabase
-            .from('profiles')
-            .insert({
-              telegram_id: tgUser.id,
-              username: tgUser.username || null,
-              first_name: tgUser.first_name || '',
-              last_name: tgUser.last_name || null,
-              photo_url: tgUser.photo_url || null,
-              referral_code: referralCode,
-              created_at: now,
-              updated_at: now,
-            })
-            .select()
-            .single();
-
-          if (error) {
-            console.error('Insert error:', error);
-            // Create local user object if DB insert fails
-            userData = {
-              id: `local_${tgUser.id}`,
-              telegram_id: tgUser.id,
-              username: tgUser.username,
-              first_name: tgUser.first_name,
-              last_name: tgUser.last_name,
-              photo_url: tgUser.photo_url,
-              referral_code: referralCode,
-            };
-          } else {
-            userData = data;
-            console.log('✅ New user created in Supabase');
-          }
+        if (error) {
+          console.error('❌ Supabase error:', error);
+          alert(`Database Error: ${error.message}`);
+          return userData; // Return local data
         }
 
-        setUser(userData);
-        setIsAuthenticated(true);
-        console.log('✅ Authentication complete:', userData);
+        console.log('✅ Saved to Supabase:', data);
+        alert('✅ User saved to database!');
+        return data;
 
-      } catch (error) {
-        console.error('Auth error:', error);
-      } finally {
-        setIsLoading(false);
+      } catch (err) {
+        console.error('💥 Exception:', err);
+        alert(`Exception: ${err}`);
+        return null;
       }
+    };
+
+    const initAuth = async () => {
+      console.log('🚀 Auth starting...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      const tg = window.Telegram?.WebApp;
+
+      if (!tg) {
+        console.log('⚠️ Not in Telegram');
+        alert('⚠️ Please open from Telegram bot');
+        setIsLoading(false);
+        return;
+      }
+
+      tg.ready();
+      tg.expand();
+
+      const tgUser = tg.initDataUnsafe?.user;
+
+      if (!tgUser) {
+        console.log('❌ No Telegram user data');
+        alert('❌ No user data from Telegram');
+        setIsLoading(false);
+        return;
+      }
+
+      console.log('📱 Telegram user:', tgUser);
+      alert(`📱 Telegram ID: ${tgUser.id}`);
+
+      const savedUser = await saveUserToSupabase(tgUser);
+
+      if (savedUser) {
+        setUser(savedUser);
+        setIsAuthenticated(true);
+      }
+
+      setIsLoading(false);
     };
 
     initAuth();
