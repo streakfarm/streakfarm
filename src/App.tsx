@@ -14,13 +14,13 @@ import Admin from "./pages/Admin";
 
 const queryClient = new QueryClient();
 
-function AppContent() {
+function AppRoutes() {
   const { isLoading } = useAuth();
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-900">
-        <div className="text-white text-xl">Loading...</div>
+        <div className="text-white">Loading StreakFarm...</div>
       </div>
     );
   }
@@ -46,7 +46,7 @@ const App = () => {
             <Toaster />
             <Sonner />
             <BrowserRouter>
-              <AppContent />
+              <AppRoutes />
             </BrowserRouter>
           </TooltipProvider>
         </AuthProvider>
