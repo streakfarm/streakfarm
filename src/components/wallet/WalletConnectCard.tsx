@@ -1,198 +1,197 @@
-import { motion, AnimatePresence } from 'framer-motion';
-import { Wallet, Check, ChevronRight, Loader2, Sparkles } from 'lucide-react';
-import { useTonWalletContext } from '@/hooks/useTonWallet';
-import { useTelegram } from '@/hooks/useTelegram';
-import { cn } from '@/lib/utils';
-import { useState } from 'react';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Wallet, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
+import { useTonConnectUI, useTonAddress, useTonWallet } from '@tonconnect/ui-react';
+import { motion } from 'framer-motion';
+import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 
-interface WalletConnectCardProps {
-  className?: string;
-  compact?: boolean;
-}
+export function WalletConnectCard() {
+  const [tonConnectUI] = useTonConnectUI();
+  const userFriendlyAddress = useTonAddress();
+  const wallet = useTonWallet();
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-export function WalletConnectCard({ className, compact = false }: WalletConnectCardProps) {
-  const { isConnected, walletAddress, connect, disconnect, isConnecting } = useTonWalletContext();
-  const { hapticFeedback } = useTelegram();
-  const [showFullAddress, setShowFullAddress] = useState(false);
+  const isConnected = !!wallet && !!userFriendlyAddress;
+
+  useEffect(() => {
+    // Check if TonConnectUI is properly initialized
+    console.log('🔍 TonConnectUI initialized:', !!tonConnectUI);
+    console.log('🔍 Wallet status:', wallet ? 'Connected' : 'Disconnected');
+    console.log('🔍 Address:', userFriendlyAddress || 'None');
+  }, [tonConnectUI, wallet, userFriendlyAddress]);
 
   const handleConnect = async () => {
-    hapticFeedback('medium');
-    await connect();
+    console.log('🔘 Connect button clicked');
+    
+    if (!tonConnectUI) {
+      const errorMsg = 'TonConnectUI not initialized';
+      console.error('❌', errorMsg);
+      toast.error(errorMsg);
+      setError(errorMsg);
+      return;
+    }
+
+    try {
+      setIsConnecting(true);
+      setError(null);
+      
+      console.log('📱 Opening wallet modal...');
+      
+      // Direct modal open - no await needed
+      tonConnectUI.openModal();
+      
+      console.log('✅ Modal opened');
+      
+      // Keep connecting state for 3 seconds
+      setTimeout(() => {
+        if (!wallet) {
+          setIsConnecting(false);
+          console.log('⏱️ Connection timeout - user may have cancelled');
+        }
+      }, 3000);
+      
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      console.error('❌ Connection error:', errorMessage);
+      toast.error(`Connection failed: ${errorMessage}`);
+      setError(errorMessage);
+      setIsConnecting(false);
+    }
   };
 
   const handleDisconnect = async () => {
-    hapticFeedback('light');
-    await disconnect();
+    if (!tonConnectUI) {
+      toast.error('TonConnectUI not available');
+      return;
+    }
+
+    try {
+      console.log('🔌 Disconnecting wallet...');
+      await tonConnectUI.disconnect();
+      toast.success('Wallet disconnected');
+      console.log('✅ Disconnected successfully');
+    } catch (err) {
+      console.error('❌ Disconnect error:', err);
+      toast.error('Failed to disconnect wallet');
+    }
   };
 
-  const shortenAddress = (address: string) => {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  const formatAddress = (address: string) => {
+    if (!address) return '';
+    return `${address.slice(0, 4)}...${address.slice(-4)}`;
   };
 
-  if (compact) {
-    return (
-      <motion.button
-        className={cn(
-          'flex items-center gap-2 px-4 py-2 rounded-full',
-          'bg-wallet/20 border border-wallet/30 text-wallet',
-          'hover:bg-wallet/30 transition-colors',
-          className
-        )}
-        onClick={isConnected ? handleDisconnect : handleConnect}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-      >
-        {isConnecting ? (
-          <Loader2 className="w-4 h-4 animate-spin" />
-        ) : isConnected ? (
-          <>
-            <Check className="w-4 h-4" />
-            <span className="text-sm font-medium">
-              {walletAddress ? shortenAddress(walletAddress) : 'Connected'}
-            </span>
-          </>
-        ) : (
-          <>
-            <Wallet className="w-4 h-4" />
-            <span className="text-sm font-medium">Connect</span>
-          </>
-        )}
-      </motion.button>
-    );
-  }
+  // Stop connecting state when wallet connects
+  useEffect(() => {
+    if (wallet) {
+      setIsConnecting(false);
+      console.log('✅ Wallet connected:', wallet.name);
+      toast.success(`Connected to ${wallet.name}`);
+    }
+  }, [wallet]);
 
   return (
-    <motion.div
-      className={cn(
-        'relative overflow-hidden rounded-2xl border p-5',
-        isConnected 
-          ? 'bg-gradient-to-br from-wallet/10 to-card border-wallet/30'
-          : 'bg-gradient-to-br from-secondary/10 via-card to-primary/5 border-secondary/30',
-        className
-      )}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-    >
-      {/* Background animation */}
-      {!isConnected && (
-        <motion.div
-          className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent"
-          animate={{ x: ['-100%', '100%'] }}
-          transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
-        />
+    <Card className="p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold flex items-center gap-2">
+          <Wallet className="w-5 h-5 text-primary" />
+          TON Wallet
+        </h3>
+        
+        {isConnected && (
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            className="flex items-center gap-1 text-green-500 text-sm"
+          >
+            <CheckCircle className="w-4 h-4" />
+            Connected
+          </motion.div>
+        )}
+      </div>
+
+      {error && (
+        <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-500 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 mt-0.5" />
+          <div>
+            <p className="font-medium">Connection Error</p>
+            <p className="text-xs mt-1">{error}</p>
+          </div>
+        </div>
       )}
 
-      <div className="relative z-10">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <motion.div
-              className={cn(
-                'w-12 h-12 rounded-xl flex items-center justify-center',
-                isConnected ? 'bg-wallet/20' : 'bg-secondary/20'
-              )}
-              animate={!isConnected ? {
-                boxShadow: [
-                  '0 0 20px hsl(185 80% 50% / 0.3)',
-                  '0 0 40px hsl(185 80% 50% / 0.5)',
-                  '0 0 20px hsl(185 80% 50% / 0.3)',
-                ],
-              } : {}}
-              transition={{ duration: 2, repeat: Infinity }}
-            >
-              <Wallet className={cn(
-                'w-6 h-6',
-                isConnected ? 'text-wallet' : 'text-secondary'
-              )} />
-            </motion.div>
+      {isConnected ? (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
             <div>
-              <h3 className="font-bold text-lg">
-                {isConnected ? 'Wallet Connected' : 'Connect Wallet'}
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                {isConnected 
-                  ? 'Unlock wallet badges & rewards'
-                  : 'Connect TON wallet to earn more'}
-              </p>
+              <p className="text-xs text-muted-foreground">Wallet</p>
+              <p className="font-medium">{wallet?.name || 'Unknown'}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-muted-foreground">Address</p>
+              <p className="font-mono text-sm">{formatAddress(userFriendlyAddress)}</p>
             </div>
           </div>
 
-          {isConnected && (
-            <motion.div
-              className="flex items-center gap-1 text-wallet"
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: 'spring', stiffness: 300 }}
-            >
-              <Check className="w-5 h-5" />
-            </motion.div>
+          <Button 
+            variant="outline" 
+            className="w-full"
+            onClick={handleDisconnect}
+          >
+            <Wallet className="w-4 h-4 mr-2" />
+            Disconnect Wallet
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex items-start gap-2 p-3 bg-muted/30 rounded-lg text-sm">
+            <AlertCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
+            <p className="text-muted-foreground">
+              Connect your TON wallet to unlock exclusive badges and increase your multiplier by 0.1×
+            </p>
+          </div>
+
+          <Button 
+            className="w-full"
+            onClick={handleConnect}
+            disabled={isConnecting || !tonConnectUI}
+          >
+            {isConnecting ? (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                Opening Wallet...
+              </>
+            ) : (
+              <>
+                <Wallet className="w-4 h-4 mr-2" />
+                Connect TON Wallet
+              </>
+            )}
+          </Button>
+
+          {!tonConnectUI && (
+            <p className="text-xs text-red-500 text-center">
+              TON Connect not initialized
+            </p>
           )}
         </div>
+      )}
 
-        <AnimatePresence mode="wait">
-          {isConnected ? (
-            <motion.div
-              key="connected"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="space-y-3"
-            >
-              <div 
-                className="bg-background/50 rounded-lg p-3 cursor-pointer"
-                onClick={() => setShowFullAddress(!showFullAddress)}
-              >
-                <div className="text-xs text-muted-foreground mb-1">Wallet Address</div>
-                <div className="font-mono text-sm text-wallet break-all">
-                  {showFullAddress ? walletAddress : (walletAddress ? shortenAddress(walletAddress) : '—')}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-rarity-legendary" />
-                <span className="text-sm text-muted-foreground">
-                  Wallet badges unlocked!
-                </span>
-              </div>
-
-              <motion.button
-                className="w-full py-2 text-sm text-muted-foreground hover:text-destructive transition-colors"
-                onClick={handleDisconnect}
-                whileTap={{ scale: 0.98 }}
-              >
-                Disconnect Wallet
-              </motion.button>
-            </motion.div>
-          ) : (
-            <motion.button
-              key="connect"
-              className={cn(
-                'w-full py-3 px-4 rounded-xl font-bold flex items-center justify-center gap-2',
-                'bg-gradient-to-r from-secondary to-wallet text-secondary-foreground',
-                'hover:opacity-90 transition-opacity',
-                'disabled:opacity-50'
-              )}
-              onClick={handleConnect}
-              disabled={isConnecting}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
-              {isConnecting ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <>
-                  <Wallet className="w-5 h-5" />
-                  Connect TON Wallet
-                  <ChevronRight className="w-4 h-4" />
-                </>
-              )}
-            </motion.button>
-          )}
-        </AnimatePresence>
-      </div>
-    </motion.div>
+      {/* Debug panel - shows connection status */}
+      <details className="text-xs">
+        <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+          🔍 Debug Info (tap to expand)
+        </summary>
+        <div className="mt-2 p-2 bg-muted/20 rounded space-y-1 font-mono">
+          <p>• TonConnectUI: {tonConnectUI ? '✅ Ready' : '❌ Not initialized'}</p>
+          <p>• Wallet: {wallet?.name || '❌ None'}</p>
+          <p>• Address: {userFriendlyAddress ? '✅ Connected' : '❌ None'}</p>
+          <p>• Connecting: {isConnecting ? '⏳ Yes' : '✅ No'}</p>
+          <p>• Error: {error || '✅ None'}</p>
+        </div>
+      </details>
+    </Card>
   );
 }
