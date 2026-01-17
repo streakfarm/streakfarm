@@ -1,21 +1,40 @@
-function AppContent() {
-  const { isLoading, isAuthenticated } = useAuth();
-  const { isTelegram, isReady } = useTelegram();
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { TonConnectUIProvider } from "@tonconnect/ui-react";
+import { AuthProvider } from "@/providers/AuthProvider";
+import Index from "./pages/Index";
+import Tasks from "./pages/Tasks";
+import Badges from "./pages/Badges";
+import Leaderboard from "./pages/Leaderboard";
+import Profile from "./pages/Profile";
+import Admin from "./pages/Admin";
 
-  // UNCOMMENT THESE LINES
-  if (isLoading || !isReady) {
-    return <SplashScreen />;
-  }
+const queryClient = new QueryClient();
 
-  if (!isTelegram && !isAuthenticated) {
-    return <SplashScreen showTelegramPrompt />;
-  }
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TonConnectUIProvider manifestUrl="https://streakfarm.vercel.app/tonconnect-manifest.json">
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/tasks" element={<Tasks />} />
+              <Route path="/badges" element={<Badges />} />
+              <Route path="/leaderboard" element={<Leaderboard />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/admin" element={<Admin />} />
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
+      </AuthProvider>
+    </TonConnectUIProvider>
+  </QueryClientProvider>
+);
 
-  return (
-    <BrowserRouter>
-      <Routes>
-        {/* ... routes ... */}
-      </Routes>
-    </BrowserRouter>
-  );
-}
+export default App;
