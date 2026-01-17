@@ -1,72 +1,87 @@
 import { useEffect, useState, createContext, useContext, ReactNode } from 'react';
-import { useTelegram } from '@/hooks/useTelegram';
+
+interface TelegramUser {
+  id: number;
+  first_name: string;
+  last_name?: string;
+  username?: string;
+  photo_url?: string;
+}
 
 interface AuthContextType {
-  user: any;
+  user: TelegramUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  telegramUser: any;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isAuthenticated: false,
   isLoading: true,
+  telegramUser: null,
 });
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<TelegramUser | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const { isTelegram } = useTelegram();
+  const [telegramUser, setTelegramUser] = useState<any>(null);
 
   useEffect(() => {
-    const authenticateUser = async () => {
-      // Wait for Telegram WebApp to initialize
-      await new Promise(resolve => setTimeout(resolve, 500));
+    const initTelegram = () => {
+      const tg = window.Telegram?.WebApp;
 
-      // Check if running in Telegram
-      if (!window.Telegram?.WebApp) {
-        console.log('Not in Telegram environment');
+      if (!tg) {
+        console.log('Not running in Telegram');
         setIsLoading(false);
         return;
       }
 
-      const initData = window.Telegram.WebApp.initData;
-      
-      if (!initData) {
-        console.log('No initData available');
-        setIsLoading(false);
-        return;
-      }
+      // Initialize Telegram WebApp
+      tg.ready();
+      tg.expand();
 
-      try {
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-auth-streakfarm`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ initData }),
-          }
-        );
+      // Get user from Telegram
+      const tgUser = tg.initDataUnsafe?.user;
 
-        const data = await response.json();
+      if (tgUser) {
+        const userData: TelegramUser = {
+          id: tgUser.id,
+          first_name: tgUser.first_name,
+          last_name: tgUser.last_name,
+          username: tgUser.username,
+          photo_url: tgUser.photo_url,
+        };
 
-        if (data.success && data.user) {
-          setUser(data.user);
+        setUser(userData);
+        setTelegramUser(tgUser);
+        setIsAuthenticated(true);
+        
+        // Save to localStorage
+        localStorage.setItem('telegram_user', JSON.stringify(userData));
+      } else {
+        // Try to load from localStorage (for development)
+        const savedUser = localStorage.getItem('telegram_user');
+        if (savedUser) {
+          const parsed = JSON.parse(savedUser);
+          setUser(parsed);
+          setTelegramUser(parsed);
           setIsAuthenticated(true);
         }
-      } catch (error) {
-        console.error('Auth error:', error);
-      } finally {
-        setIsLoading(false);
       }
+
+      setIsLoading(false);
     };
 
-    authenticateUser();
+    // Wait a bit for Telegram SDK to load
+    const timer = setTimeout(initTelegram, 100);
+
+    return () => clearTimeout(timer);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, isLoading }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, isLoading, telegramUser }}>
       {children}
     </AuthContext.Provider>
   );
