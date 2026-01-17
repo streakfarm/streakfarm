@@ -335,7 +335,7 @@ export default function Profile() {
                     animate={{ scale: 1 }}
                     className="text-3xl font-bold text-primary"
                   >
-                    {totalMultiplier.toFixed(1)}×
+                    {(totalMultiplier ?? 1).toFixed(1)}××
                   </motion.span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
