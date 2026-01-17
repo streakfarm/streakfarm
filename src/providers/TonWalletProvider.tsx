@@ -15,7 +15,7 @@ export const TonWalletProvider = ({ children }: TonWalletProviderProps) => {
     <TonConnectUIProvider 
       manifestUrl={manifestUrl}
       actionsConfiguration={{
-        twaReturnUrl: 'https://t.me/YOUR_BOT_USERNAME'
+        twaReturnUrl: 'https://t.me/streakfarmbot'
       }}
     >
       {children}
