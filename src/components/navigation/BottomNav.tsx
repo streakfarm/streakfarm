@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, CheckSquare, Trophy, Users, User } from 'lucide-react';
+import { Home, CheckSquare, Award, Trophy, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTelegram } from '@/hooks/useTelegram';
 import { useBoxes } from '@/hooks/useBoxes';
@@ -9,8 +9,8 @@ import { useState } from 'react';
 const navItems = [
   { path: '/', icon: Home, label: 'Home' },
   { path: '/tasks', icon: CheckSquare, label: 'Tasks' },
-  { path: '/badges', icon: Trophy, label: 'Badges' },
-  { path: '/leaderboard', icon: Users, label: 'Ranks' },
+  { path: '/badges', icon: Award, label: 'Badges' },
+  { path: '/leaderboard', icon: Trophy, label: 'Ranks' },
   { path: '/profile', icon: User, label: 'Profile' },
 ];
 
@@ -21,9 +21,12 @@ export function BottomNav() {
   const [ripple, setRipple] = useState<{ x: number; y: number; path: string } | null>(null);
 
   const handleNavClick = (e: React.MouseEvent, path: string) => {
-    hapticFeedback('selection');
+    try {
+      hapticFeedback?.('selection');
+    } catch (error) {
+      console.log('Haptic feedback not available');
+    }
     
-    // Create ripple effect
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
@@ -33,7 +36,7 @@ export function BottomNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-lg border-t border-border z-50 safe-bottom">
-      <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-2">
+      <div className="grid grid-cols-5 items-center h-16 max-w-lg mx-auto">
         {navItems.map(({ path, icon: Icon, label }) => {
           const isActive = location.pathname === path;
           
@@ -43,13 +46,12 @@ export function BottomNav() {
               to={path}
               onClick={(e) => handleNavClick(e, path)}
               className={cn(
-                'relative flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-xl transition-all duration-200 overflow-hidden',
+                'relative flex flex-col items-center justify-center gap-1 px-1.5 py-2 rounded-xl transition-all duration-200 overflow-hidden',
                 isActive 
                   ? 'text-secondary' 
                   : 'text-muted-foreground hover:text-foreground'
               )}
             >
-              {/* Ripple effect */}
               {ripple?.path === path && (
                 <motion.span
                   initial={{ scale: 0, opacity: 0.5 }}
@@ -66,7 +68,6 @@ export function BottomNav() {
                 />
               )}
               
-              {/* Active glow background */}
               {isActive && (
                 <motion.div
                   layoutId="nav-active"
@@ -82,7 +83,6 @@ export function BottomNav() {
                   isActive && 'drop-shadow-[0_0_8px_hsl(var(--secondary))]'
                 )} />
                 
-                {/* Notification badge for tasks */}
                 {path === '/' && availableCount > 0 && (
                   <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] bg-accent text-accent-foreground text-[9px] font-bold rounded-full flex items-center justify-center px-1">
                     {availableCount > 99 ? '99+' : availableCount}
@@ -91,13 +91,12 @@ export function BottomNav() {
               </div>
               
               <span className={cn(
-                'text-[10px] font-medium relative z-10',
+                'text-[10px] font-medium relative z-10 truncate max-w-full',
                 isActive && 'font-semibold'
               )}>
                 {label}
               </span>
 
-              {/* Active indicator dot */}
               {isActive && (
                 <motion.div
                   layoutId="nav-dot"
