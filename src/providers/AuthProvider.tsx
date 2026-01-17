@@ -1,89 +1,75 @@
-import { useEffect, useState, createContext, useContext, ReactNode } from 'react';
-import { useTelegram } from '@/hooks/useTelegram';
+import { createContext, useContext, ReactNode, useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { User } from '@supabase/supabase-js';
+import { useTelegram } from './TelegramProvider';
 
 interface AuthContextType {
-  user: any;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  error: string | null;
+  user: User | null;
+  loading: boolean;
+  signIn: () => Promise<void>;
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
-  isAuthenticated: false,
-  isLoading: false,
-  error: null,
+  loading: true,
+  signIn: async () => {},
+  signOut: async () => {},
 });
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<any>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const { isTelegram, isReady } = useTelegram();
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const { user: telegramUser, isReady } = useTelegram();
 
   useEffect(() => {
-    const authenticateUser = async () => {
-      // Don't block rendering
-      if (!isReady || !isTelegram) {
-        return;
-      }
+    if (!isReady) return;
 
-      const initData = window.Telegram?.WebApp?.initData;
-      if (!initData) {
-        console.log('No Telegram initData available');
-        return;
-      }
-
-      setIsLoading(true);
-      
+    // Auto sign-in with Telegram user
+    const initAuth = async () => {
       try {
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        
-        if (!supabaseUrl) {
-          throw new Error('VITE_SUPABASE_URL not configured');
-        }
+        if (telegramUser) {
+          // Check if user exists in Supabase
+          const { data: existingUser } = await supabase
+            .from('users')
+            .select('*')
+            .eq('telegram_id', telegramUser.id)
+            .single();
 
-        const response = await fetch(
-          `${supabaseUrl}/functions/v1/telegram-auth`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ initData }),
+          if (!existingUser) {
+            // Create new user
+            await supabase.from('users').insert({
+              telegram_id: telegramUser.id,
+              username: telegramUser.username || `user_${telegramUser.id}`,
+              first_name: telegramUser.first_name,
+              last_name: telegramUser.last_name,
+            });
           }
-        );
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          // Set authenticated user
+          setUser({ id: telegramUser.id.toString() } as User);
         }
-
-        const data = await response.json();
-
-        if (data.success && data.user) {
-          setUser(data.user);
-          setIsAuthenticated(true);
-          setError(null);
-          console.log('✅ Authentication successful:', data.user);
-        } else {
-          throw new Error(data.error || 'Authentication failed');
-        }
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-        console.error('❌ Authentication error:', errorMessage);
-        setError(errorMessage);
-        setIsAuthenticated(false);
+      } catch (error) {
+        console.error('Auth init error:', error);
       } finally {
-        setIsLoading(false);
+        setLoading(false);
       }
     };
 
-    authenticateUser();
-  }, [isTelegram, isReady]);
+    initAuth();
+  }, [telegramUser, isReady]);
+
+  const signIn = async () => {
+    // Telegram auto-authentication
+    console.log('User already authenticated via Telegram');
+  };
+
+  const signOut = async () => {
+    setUser(null);
+  };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, isLoading, error }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
