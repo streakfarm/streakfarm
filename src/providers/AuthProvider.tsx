@@ -1,4 +1,5 @@
 import { useEffect, useState, createContext, useContext, ReactNode } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface AuthContextType {
   user: any;
@@ -25,69 +26,107 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const initAuth = async () => {
-      // Wait for Telegram SDK
       await new Promise(resolve => setTimeout(resolve, 500));
 
       try {
         const tg = window.Telegram?.WebApp;
         
-        if (tg) {
-          tg.ready();
-          tg.expand();
-          
-          const tgUser = tg.initDataUnsafe?.user;
-          
-          if (tgUser) {
-            const userData = {
-              id: `tg_${tgUser.id}`,
-              telegram_id: tgUser.id,
-              username: tgUser.username || 'user',
-              first_name: tgUser.first_name || 'User',
-              last_name: tgUser.last_name || '',
+        if (!tg) {
+          console.log('Not in Telegram');
+          setIsLoading(false);
+          return;
+        }
+
+        tg.ready();
+        tg.expand();
+        
+        const tgUser = tg.initDataUnsafe?.user;
+        
+        if (!tgUser) {
+          console.log('No Telegram user');
+          setIsLoading(false);
+          return;
+        }
+
+        console.log('📱 Telegram User:', tgUser);
+
+        // Generate referral code
+        const referralCode = `SF${tgUser.id.toString(36).toUpperCase()}`;
+        const now = new Date().toISOString();
+
+        // Check if user exists
+        const { data: existingUser } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('telegram_id', tgUser.id)
+          .single();
+
+        let userData;
+
+        if (existingUser) {
+          // Update existing user
+          const { data, error } = await supabase
+            .from('profiles')
+            .update({
+              username: tgUser.username || null,
+              first_name: tgUser.first_name || '',
+              last_name: tgUser.last_name || null,
               photo_url: tgUser.photo_url || null,
-              referral_code: `SF${tgUser.id.toString(36).toUpperCase()}`,
+              updated_at: now,
+            })
+            .eq('telegram_id', tgUser.id)
+            .select()
+            .single();
+
+          if (error) {
+            console.error('Update error:', error);
+            userData = existingUser;
+          } else {
+            userData = data;
+            console.log('✅ User updated in Supabase');
+          }
+        } else {
+          // Insert new user
+          const { data, error } = await supabase
+            .from('profiles')
+            .insert({
+              telegram_id: tgUser.id,
+              username: tgUser.username || null,
+              first_name: tgUser.first_name || '',
+              last_name: tgUser.last_name || null,
+              photo_url: tgUser.photo_url || null,
+              referral_code: referralCode,
+              created_at: now,
+              updated_at: now,
+            })
+            .select()
+            .single();
+
+          if (error) {
+            console.error('Insert error:', error);
+            // Create local user object if DB insert fails
+            userData = {
+              id: `local_${tgUser.id}`,
+              telegram_id: tgUser.id,
+              username: tgUser.username,
+              first_name: tgUser.first_name,
+              last_name: tgUser.last_name,
+              photo_url: tgUser.photo_url,
+              referral_code: referralCode,
             };
-            
-            setUser(userData);
-            setIsAuthenticated(true);
-            console.log('✅ Telegram user authenticated:', userData);
-            setIsLoading(false);
-            return;
+          } else {
+            userData = data;
+            console.log('✅ New user created in Supabase');
           }
         }
 
-        // Fallback for development/testing
-        console.log('⚠️ Not in Telegram - using mock user');
-        const mockUser = {
-          id: 'dev_001',
-          telegram_id: 123456789,
-          username: 'devuser',
-          first_name: 'Dev',
-          last_name: 'User',
-          photo_url: null,
-          referral_code: 'SFDEV001',
-        };
-        
-        setUser(mockUser);
+        setUser(userData);
         setIsAuthenticated(true);
-        setIsLoading(false);
-        
+        console.log('✅ Authentication complete:', userData);
+
       } catch (error) {
         console.error('Auth error:', error);
-        
-        // Emergency fallback
-        const fallbackUser = {
-          id: 'fallback_001',
-          telegram_id: 999999999,
-          username: 'fallback',
-          first_name: 'Guest',
-          last_name: '',
-          photo_url: null,
-          referral_code: 'SFGUEST',
-        };
-        
-        setUser(fallbackUser);
-        setIsAuthenticated(true);
+      } finally {
         setIsLoading(false);
       }
     };
