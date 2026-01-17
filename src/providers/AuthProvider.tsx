@@ -1,115 +1,98 @@
 import { useEffect, useState, createContext, useContext, ReactNode } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useTelegram } from '@/hooks/useTelegram';
 
 interface AuthContextType {
   user: any;
   isAuthenticated: boolean;
   isLoading: boolean;
+  error: string | null;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isAuthenticated: false,
-  isLoading: true,
+  isLoading: false,
+  error: null,
 });
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<any>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { isTelegram, isReady } = useTelegram();
 
   useEffect(() => {
-    const saveUserToSupabase = async (telegramUser: any) => {
+    const authenticateUser = async () => {
+      // Don't block rendering
+      if (!isReady || !isTelegram) {
+        return;
+      }
+
+      const initData = window.Telegram?.WebApp?.initData;
+      if (!initData) {
+        console.log('No Telegram initData available');
+        return;
+      }
+
+      setIsLoading(true);
+      
       try {
-        console.log('💾 Saving to Supabase:', telegramUser);
-
-        const referralCode = `SF${telegramUser.id.toString(36).toUpperCase()}`;
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
         
-        const userData = {
-          telegram_id: telegramUser.id,
-          username: telegramUser.username || `user${telegramUser.id}`,
-          first_name: telegramUser.first_name || 'User',
-          last_name: telegramUser.last_name || '',
-          photo_url: telegramUser.photo_url || null,
-          referral_code: referralCode,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-
-        console.log('📝 User data to insert:', userData);
-
-        // Try to insert
-        const { data, error } = await supabase
-          .from('profiles')
-          .upsert(userData, {
-            onConflict: 'telegram_id',
-          })
-          .select()
-          .single();
-
-        if (error) {
-          console.error('❌ Supabase error:', error);
-          alert(`Database Error: ${error.message}`);
-          return userData; // Return local data
+        if (!supabaseUrl) {
+          throw new Error('VITE_SUPABASE_URL not configured');
         }
 
-        console.log('✅ Saved to Supabase:', data);
-        alert('✅ User saved to database!');
-        return data;
+        const response = await fetch(
+          `${supabaseUrl}/functions/v1/telegram-auth`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ initData }),
+          }
+        );
 
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        if (data.success && data.user) {
+          setUser(data.user);
+          setIsAuthenticated(true);
+          setError(null);
+          console.log('✅ Authentication successful:', data.user);
+        } else {
+          throw new Error(data.error || 'Authentication failed');
+        }
       } catch (err) {
-        console.error('💥 Exception:', err);
-        alert(`Exception: ${err}`);
-        return null;
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        console.error('❌ Authentication error:', errorMessage);
+        setError(errorMessage);
+        setIsAuthenticated(false);
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    const initAuth = async () => {
-      console.log('🚀 Auth starting...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      const tg = window.Telegram?.WebApp;
-
-      if (!tg) {
-        console.log('⚠️ Not in Telegram');
-        alert('⚠️ Please open from Telegram bot');
-        setIsLoading(false);
-        return;
-      }
-
-      tg.ready();
-      tg.expand();
-
-      const tgUser = tg.initDataUnsafe?.user;
-
-      if (!tgUser) {
-        console.log('❌ No Telegram user data');
-        alert('❌ No user data from Telegram');
-        setIsLoading(false);
-        return;
-      }
-
-      console.log('📱 Telegram user:', tgUser);
-      alert(`📱 Telegram ID: ${tgUser.id}`);
-
-      const savedUser = await saveUserToSupabase(tgUser);
-
-      if (savedUser) {
-        setUser(savedUser);
-        setIsAuthenticated(true);
-      }
-
-      setIsLoading(false);
-    };
-
-    initAuth();
-  }, []);
+    authenticateUser();
+  }, [isTelegram, isReady]);
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, isLoading }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, isLoading, error }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within AuthProvider');
+  }
+  return context;
+};
