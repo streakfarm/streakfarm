@@ -1,7 +1,38 @@
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { TonConnectUIProvider } from "@tonconnect/ui-react";
+import { AuthProvider, useAuth } from "@/providers/AuthProvider";
+import Index from "./pages/Index";
+import Tasks from "./pages/Tasks";
+import Badges from "./pages/Badges";
+import Leaderboard from "./pages/Leaderboard";
+import Profile from "./pages/Profile";
+import Admin from "./pages/Admin";
+
+const queryClient = new QueryClient();
+
 function AppRoutes() {
   const { user, isLoading } = useAuth();
 
-  // TEMPORARY - Skip auth check for testing
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-900">
+        <div className="text-white text-xl">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-900">
+        <div className="text-white text-xl">Authenticating...</div>
+      </div>
+    );
+  }
+
   return (
     <Routes>
       <Route path="/" element={<Index />} />
@@ -13,3 +44,23 @@ function AppRoutes() {
     </Routes>
   );
 }
+
+const App = () => {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TonConnectUIProvider manifestUrl="https://streakfarm.vercel.app/tonconnect-manifest.json">
+        <AuthProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <AppRoutes />
+            </BrowserRouter>
+          </TooltipProvider>
+        </AuthProvider>
+      </TonConnectUIProvider>
+    </QueryClientProvider>
+  );
+};
+
+export default App;  // ⬅️ YEH LINE ZAROORI HAI!
