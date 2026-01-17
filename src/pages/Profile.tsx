@@ -74,8 +74,14 @@ export default function Profile() {
   // If not authenticated, user will see splash screen from App.tsx
   // This should not render, but just in case - return null
   if (!isAuthenticated) {
-    return null;
-  }
+  return (
+    <AppLayout>
+      <div className="p-6 text-center text-muted-foreground">
+        Please login to view your profile
+      </div>
+    </AppLayout>
+  );
+}
 
   return (
     <AppLayout>
