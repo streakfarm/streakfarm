@@ -1,9 +1,9 @@
 import { useAuth } from "@/providers/AuthProvider";
+import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Share2, Copy } from "lucide-react";
+import { Share2, Copy, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
-import BottomNav from "@/components/navigation/BottomNav";
 
 const Profile = () => {
   const { user, isAuthenticated } = useAuth();
@@ -29,18 +29,25 @@ const Profile = () => {
 
   if (!isAuthenticated || !user) {
     return (
-      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
-        <p>Please authenticate first</p>
-      </div>
+      <AppLayout showHeader={false} showNav={false} showCTA={false}>
+        <div className="flex items-center justify-center min-h-screen">
+          <p className="text-gray-400">Please authenticate first</p>
+        </div>
+      </AppLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white pb-20">
+    <AppLayout>
       <div className="p-6 space-y-6">
         {/* Profile Header */}
         <Card className="bg-gray-800 border-gray-700">
           <CardHeader>
+            <div className="flex items-center justify-center mb-4">
+              <div className="w-20 h-20 bg-green-600 rounded-full flex items-center justify-center">
+                <UserIcon className="w-10 h-10 text-white" />
+              </div>
+            </div>
             <CardTitle className="text-center text-2xl">
               {user.first_name || 'User'} {user.last_name || ''}
             </CardTitle>
@@ -97,34 +104,20 @@ const Profile = () => {
           <CardContent className="space-y-3">
             <div className="flex justify-between">
               <span className="text-gray-400">Total Points</span>
-              <span className="font-bold">{user.total_points || 0}</span>
+              <span className="font-bold text-green-400">{user.total_points || 0}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-400">Current Streak</span>
-              <span className="font-bold">{user.current_streak || 0} days</span>
+              <span className="font-bold text-green-400">{user.current_streak || 0} days</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-400">Referrals</span>
-              <span className="font-bold">{user.referral_count || 0}</span>
+              <span className="font-bold text-green-400">{user.referral_count || 0}</span>
             </div>
           </CardContent>
         </Card>
-
-        {/* Debug Info */}
-        <Card className="bg-gray-800 border-gray-700 opacity-50">
-          <CardHeader>
-            <CardTitle className="text-sm">Debug Info</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <pre className="text-xs overflow-auto">
-              {JSON.stringify(user, null, 2)}
-            </pre>
-          </CardContent>
-        </Card>
       </div>
-
-      <BottomNav />
-    </div>
+    </AppLayout>
   );
 };
 
