@@ -44,7 +44,7 @@ export default function Profile() {
     toast.success('Logged out successfully');
   };
 
-  // Safe optional chaining
+  // Safe optional chaining for wallet badges
   const walletBadges = badgesByCategory?.wallet || [];
   const ownedWalletBadgeIds = new Set(
     (userBadges || [])
@@ -74,9 +74,6 @@ export default function Profile() {
       value: (profile?.total_tasks_completed || 0).toString()
     },
   ];
-
-  // REMOVED: Authentication check that was blocking the page
-  // Users can access profile without authentication for testing
 
   return (
     <AppLayout>
