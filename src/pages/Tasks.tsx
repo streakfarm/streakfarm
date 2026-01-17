@@ -1,195 +1,89 @@
-import { useState, useEffect } from "react";
-import { useAuth } from "@/providers/AuthProvider";
-import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { CheckCircle2, Circle, ExternalLink } from "lucide-react";
-import { toast } from "sonner";
-import BottomNav from "@/components/navigation/BottomNav";
+import { useState } from 'react';
+import { AppLayout } from '@/components/layout/AppLayout';
+import { CheckinCard } from '@/components/tasks/CheckinCard';
+import { TaskList } from '@/components/tasks/TaskList';
+import { AdWatchCard } from '@/components/tasks/AdWatchCard';
+import { WalletBanner } from '@/components/gamification/WalletBanner';
+import { FireTrail } from '@/components/gamification/FireTrail';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card } from '@/components/ui/card';
+import { useTasks } from '@/hooks/useTasks';
+import { CheckCircle2, ListTodo } from 'lucide-react';
+import { motion } from 'framer-motion';
 
-interface Task {
-  id: string;
-  title: string;
-  description: string;
-  points: number;
-  task_type: string;
-  url?: string;
-  is_completed?: boolean;
-}
-
-const Tasks = () => {
-  const { user } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadTasks();
-  }, [user]);
-
-  const loadTasks = async () => {
-    try {
-      // Fetch all tasks
-      const { data: allTasks, error: tasksError } = await supabase
-        .from('tasks')
-        .select('*')
-        .order('points', { ascending: false });
-
-      if (tasksError) throw tasksError;
-
-      if (!user?.id) {
-        setTasks(allTasks || []);
-        setLoading(false);
-        return;
-      }
-
-      // Fetch completed tasks for this user
-      const { data: completedTasks, error: completedError } = await supabase
-        .from('task_completions')
-        .select('task_id')
-        .eq('user_id', user.id);
-
-      if (completedError) throw completedError;
-
-      const completedTaskIds = new Set(
-        completedTasks?.map((t) => t.task_id) || []
-      );
-
-      const tasksWithStatus = (allTasks || []).map((task) => ({
-        ...task,
-        is_completed: completedTaskIds.has(task.id),
-      }));
-
-      setTasks(tasksWithStatus);
-    } catch (error) {
-      console.error('Error loading tasks:', error);
-      toast.error('Failed to load tasks');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const completeTask = async (task: Task) => {
-    if (!user?.id) {
-      toast.error('Please authenticate first');
-      return;
-    }
-
-    if (task.is_completed) {
-      toast.info('Task already completed!');
-      return;
-    }
-
-    try {
-      // Open URL if exists
-      if (task.url) {
-        window.open(task.url, '_blank');
-      }
-
-      // Mark task as completed
-      const { error: completionError } = await supabase
-        .from('task_completions')
-        .insert({
-          user_id: user.id,
-          task_id: task.id,
-          points_earned: task.points,
-          completed_at: new Date().toISOString(),
-        });
-
-      if (completionError) {
-        if (completionError.code === '23505') {
-          toast.info('Task already completed!');
-        } else {
-          throw completionError;
-        }
-      } else {
-        // Update user points
-        const { error: updateError } = await supabase
-          .from('profiles')
-          .update({
-            total_points: (user.total_points || 0) + task.points,
-          })
-          .eq('id', user.id);
-
-        if (updateError) throw updateError;
-
-        toast.success(`+${task.points} points! Task completed!`);
-        loadTasks(); // Reload tasks
-      }
-    } catch (error) {
-      console.error('Error completing task:', error);
-      toast.error('Failed to complete task');
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
-        <p>Loading tasks...</p>
-      </div>
-    );
-  }
+export default function Tasks() {
+  const [activeTab, setActiveTab] = useState('available');
+  const { completedTaskIds, tasks } = useTasks();
+  
+  const availableCount = tasks.filter(t => !completedTaskIds.has(t.id)).length;
+  const completedCount = completedTaskIds.size;
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white pb-20">
-      <div className="p-6 space-y-4">
-        <h1 className="text-3xl font-bold mb-6">Daily Tasks</h1>
+    <AppLayout hideFloatingCTA>
+      <div className="px-4 py-6 max-w-lg mx-auto space-y-6 pb-24">
+        {/* Header */}
+        <div className="text-center">
+          <motion.h1 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-2xl font-bold mb-1"
+          >
+            📋 Daily Tasks
+          </motion.h1>
+          <p className="text-sm text-muted-foreground">
+            Complete tasks to earn bonus points!
+          </p>
+        </div>
 
-        {tasks.length === 0 ? (
-          <Card className="bg-gray-800 border-gray-700">
-            <CardContent className="p-6 text-center">
-              <p className="text-gray-400">No tasks available</p>
-            </CardContent>
-          </Card>
-        ) : (
-          tasks.map((task) => (
-            <Card
-              key={task.id}
-              className={`bg-gray-800 border-gray-700 ${
-                task.is_completed ? 'opacity-60' : ''
-              }`}
-            >
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span className="text-lg">{task.title}</span>
-                  <span className="text-green-400 font-bold">
-                    +{task.points} pts
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-gray-300">{task.description}</p>
+        {/* Wallet Banner */}
+        <WalletBanner />
 
-                <Button
-                  onClick={() => completeTask(task)}
-                  disabled={task.is_completed}
-                  className={`w-full ${
-                    task.is_completed
-                      ? 'bg-green-600'
-                      : 'bg-blue-600 hover:bg-blue-700'
-                  }`}
-                >
-                  {task.is_completed ? (
-                    <>
-                      <CheckCircle2 className="mr-2 h-5 w-5" />
-                      Completed
-                    </>
-                  ) : (
-                    <>
-                      <Circle className="mr-2 h-5 w-5" />
-                      Complete Task
-                      {task.url && <ExternalLink className="ml-2 h-4 w-4" />}
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
-          ))
-        )}
+        {/* Streak Fire Trail */}
+        <Card className="p-4 bg-gradient-to-br from-orange-500/5 to-red-500/5 border-orange-500/20">
+          <h3 className="font-semibold mb-4 flex items-center gap-2">
+            🔥 Daily Streak Progress
+          </h3>
+          <FireTrail />
+        </Card>
+
+        {/* Daily Checkin */}
+        <CheckinCard />
+
+        {/* Ad Watch Card */}
+        <AdWatchCard />
+
+        {/* Task Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2 mb-4">
+            <TabsTrigger value="available" className="flex items-center gap-2">
+              <ListTodo className="w-4 h-4" />
+              Available
+              {availableCount > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-bold">
+                  {availableCount}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="completed" className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" />
+              Completed
+              {completedCount > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-500 text-xs font-bold">
+                  {completedCount}
+                </span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="available">
+            <TaskList filter="available" />
+          </TabsContent>
+
+          <TabsContent value="completed">
+            <TaskList filter="completed" />
+          </TabsContent>
+        </Tabs>
       </div>
-
-      <BottomNav />
-    </div>
+    </AppLayout>
   );
-};
-
-export default Tasks;
+}
