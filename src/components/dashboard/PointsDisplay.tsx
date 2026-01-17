@@ -118,3 +118,4 @@ export function PointsDisplay() {
       </div>
     </motion.div>
   );
+}
