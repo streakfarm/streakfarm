@@ -31,7 +31,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      // Get Telegram WebApp initData
       const initData = window.Telegram?.WebApp?.initData;
       
       if (!initData) {
@@ -41,9 +40,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       try {
-        // Call Edge Function for authentication
+        // Updated Edge Function name
         const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-auth`,
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-auth-streakfarm`,
           {
             method: 'POST',
             headers: {
