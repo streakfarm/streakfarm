@@ -22,15 +22,17 @@ function AppContent() {
   const { isLoading, isAuthenticated } = useAuth();
   const { isTelegram, isReady } = useTelegram();
 
-  // Show splash while loading or waiting for Telegram to be ready
+  // AUTHENTICATION CHECKS DISABLED FOR TESTING
+  // Uncomment these when Telegram bot is properly configured
+  /*
   if (isLoading || !isReady) {
     return <SplashScreen />;
   }
 
-  // If not in Telegram and not authenticated, show Telegram prompt
   if (!isTelegram && !isAuthenticated) {
     return <SplashScreen showTelegramPrompt />;
   }
+  */
 
   return (
     <BrowserRouter>
