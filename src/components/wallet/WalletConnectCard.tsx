@@ -11,15 +11,12 @@ export function WalletConnectCard() {
   const userFriendlyAddress = useTonAddress();
   const wallet = useTonWallet();
   const [isConnecting, setIsConnecting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const isConnected = !!wallet && !!userFriendlyAddress;
 
-  // Get proper wallet name
   const getWalletName = () => {
     if (!wallet) return 'Unknown';
     
-    // Map device names to user-friendly names
     const walletNameMap: Record<string, string> = {
       'tonkeeper': 'Tonkeeper',
       'mytonwallet': 'MyTonWallet',
@@ -37,61 +34,35 @@ export function WalletConnectCard() {
   useEffect(() => {
     if (wallet) {
       setIsConnecting(false);
-      const walletName = getWalletName();
-      console.log('✅ Wallet connected:', walletName);
-      toast.success(`Connected to ${walletName}`);
+      toast.success(`Connected to ${getWalletName()}`);
     }
   }, [wallet]);
 
   const handleConnect = async () => {
-    console.log('🔘 Connect button clicked');
-    
-    if (!tonConnectUI) {
-      const errorMsg = 'TonConnectUI not initialized';
-      console.error('❌', errorMsg);
-      toast.error(errorMsg);
-      setError(errorMsg);
-      return;
-    }
+    if (!tonConnectUI) return;
 
     try {
       setIsConnecting(true);
-      setError(null);
-      
-      console.log('📱 Opening wallet modal...');
       tonConnectUI.openModal();
-      console.log('✅ Modal opened');
       
       setTimeout(() => {
-        if (!wallet) {
-          setIsConnecting(false);
-          console.log('⏱️ Connection timeout');
-        }
+        if (!wallet) setIsConnecting(false);
       }, 3000);
-      
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      console.error('❌ Connection error:', errorMessage);
-      toast.error(`Connection failed: ${errorMessage}`);
-      setError(errorMessage);
+      const errorMessage = err instanceof Error ? err.message : 'Connection failed';
+      toast.error(errorMessage);
       setIsConnecting(false);
     }
   };
 
   const handleDisconnect = async () => {
-    if (!tonConnectUI) {
-      toast.error('TonConnectUI not available');
-      return;
-    }
+    if (!tonConnectUI) return;
 
     try {
-      console.log('🔌 Disconnecting wallet...');
       await tonConnectUI.disconnect();
       toast.success('Wallet disconnected');
-      console.log('✅ Disconnected successfully');
     } catch (err) {
-      console.error('❌ Disconnect error:', err);
-      toast.error('Failed to disconnect wallet');
+      toast.error('Failed to disconnect');
     }
   };
 
@@ -103,7 +74,7 @@ export function WalletConnectCard() {
   const copyAddress = () => {
     if (userFriendlyAddress) {
       navigator.clipboard.writeText(userFriendlyAddress);
-      toast.success('Address copied to clipboard');
+      toast.success('Address copied');
     }
   };
 
@@ -133,19 +104,8 @@ export function WalletConnectCard() {
         )}
       </div>
 
-      {error && (
-        <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-500 flex items-start gap-2">
-          <AlertCircle className="w-4 h-4 mt-0.5" />
-          <div>
-            <p className="font-medium">Connection Error</p>
-            <p className="text-xs mt-1">{error}</p>
-          </div>
-        </div>
-      )}
-
       {isConnected ? (
         <div className="space-y-3">
-          {/* Wallet Info Card */}
           <div className="p-3 bg-gradient-to-br from-primary/5 to-primary/10 rounded-lg space-y-2">
             <div className="flex items-center justify-between">
               <div>
@@ -179,7 +139,6 @@ export function WalletConnectCard() {
             </div>
           </div>
 
-          {/* Wallet Benefits */}
           <div className="p-3 bg-muted/30 rounded-lg">
             <p className="text-xs font-medium text-muted-foreground mb-2">Active Benefits:</p>
             <div className="space-y-1.5">
@@ -193,7 +152,7 @@ export function WalletConnectCard() {
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                <span>Access to Rewards</span>
+                <span>Access to Premium Rewards</span>
               </div>
             </div>
           </div>
@@ -233,28 +192,8 @@ export function WalletConnectCard() {
               </>
             )}
           </Button>
-
-          {!tonConnectUI && (
-            <p className="text-xs text-red-500 text-center">
-              TON Connect not initialized
-            </p>
-          )}
         </div>
       )}
-
-      {/* Debug panel */}
-      <details className="text-xs">
-        <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-          🔍 Debug Info (tap to expand)
-        </summary>
-        <div className="mt-2 p-2 bg-muted/20 rounded space-y-1 font-mono">
-          <p>• TonConnectUI: {tonConnectUI ? '✅ Ready' : '❌ Not initialized'}</p>
-          <p>• Wallet: {wallet ? `✅ ${getWalletName()}` : '❌ None'}</p>
-          <p>• Address: {userFriendlyAddress ? '✅ Connected' : '❌ None'}</p>
-          <p>• Connecting: {isConnecting ? '⏳ Yes' : '✅ No'}</p>
-          <p>• Error: {error || '✅ None'}</p>
-        </div>
-      </details>
     </Card>
   );
 }
