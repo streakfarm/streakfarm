@@ -1,6 +1,7 @@
 import { createContext, useContext, ReactNode, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useTelegram } from './TelegramProvider';
+import { toast } from 'sonner';
 
 interface AuthUser {
   id: string;
@@ -43,16 +44,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signIn = async () => {
     if (!telegramUser) {
       console.error('❌ No Telegram user found');
-      setError('No Telegram user found');
+      setError('No Telegram user');
       setLoading(false);
       return;
     }
 
     try {
-      console.log('🔐 Starting authentication for:', telegramUser.id);
+      console.log('========================================');
+      console.log('🔐 AUTHENTICATION STARTING');
+      console.log('Telegram User ID:', telegramUser.id);
+      console.log('Telegram Username:', telegramUser.username);
+      console.log('Telegram Name:', telegramUser.first_name);
+      console.log('========================================');
+      
       setError(null);
 
-      // Check if user exists
+      // Step 1: Check if user exists
+      console.log('📊 Step 1: Checking if user exists...');
       const { data: existingUser, error: fetchError } = await supabase
         .from('users')
         .select('*')
@@ -61,19 +69,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (fetchError) {
         console.error('❌ Fetch error:', fetchError);
+        console.error('Error code:', fetchError.code);
+        console.error('Error message:', fetchError.message);
+        console.error('Error details:', fetchError.details);
         setError(`Database error: ${fetchError.message}`);
+        toast.error(`DB Error: ${fetchError.message}`);
         setLoading(false);
         return;
       }
 
       if (existingUser) {
-        console.log('✅ Existing user found, updating...');
+        console.log('✅ Existing user found!');
+        console.log('User data:', existingUser);
         
-        // Update existing user
+        // Update last login
+        console.log('📝 Updating last login...');
         const { data: updatedUser, error: updateError } = await supabase
           .from('users')
           .update({
-            username: telegramUser.username || `user_${telegramUser.id}`,
+            username: telegramUser.username || existingUser.username,
             first_name: telegramUser.first_name,
             last_name: telegramUser.last_name,
             photo_url: telegramUser.photo_url,
@@ -85,49 +99,67 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         if (updateError) {
           console.error('❌ Update error:', updateError);
-          setError(`Update error: ${updateError.message}`);
-          setLoading(false);
-          return;
+          // Still set existing user even if update fails
+          setUser(existingUser);
+          toast.warning('Logged in (update failed)');
+        } else {
+          console.log('✅ User updated successfully!');
+          setUser(updatedUser);
+          toast.success(`Welcome back, ${updatedUser.first_name}!`);
         }
-
-        console.log('✅ User updated successfully:', updatedUser);
-        setUser(updatedUser);
       } else {
-        console.log('✅ New user, creating...');
+        console.log('➕ New user - creating account...');
         
-        // Create new user
+        const newUserData = {
+          telegram_id: telegramUser.id,
+          username: telegramUser.username || `user_${telegramUser.id}`,
+          first_name: telegramUser.first_name,
+          last_name: telegramUser.last_name || null,
+          photo_url: telegramUser.photo_url || null,
+          created_at: new Date().toISOString(),
+          last_login: new Date().toISOString(),
+          streak_count: 0,
+          total_points: 0,
+        };
+
+        console.log('📝 Inserting new user:', newUserData);
+
         const { data: newUser, error: insertError } = await supabase
           .from('users')
-          .insert({
-            telegram_id: telegramUser.id,
-            username: telegramUser.username || `user_${telegramUser.id}`,
-            first_name: telegramUser.first_name,
-            last_name: telegramUser.last_name,
-            photo_url: telegramUser.photo_url,
-            created_at: new Date().toISOString(),
-            last_login: new Date().toISOString(),
-            streak_count: 0,
-            total_points: 0,
-          })
+          .insert(newUserData)
           .select()
           .single();
 
         if (insertError) {
           console.error('❌ Insert error:', insertError);
+          console.error('Error code:', insertError.code);
+          console.error('Error message:', insertError.message);
+          console.error('Error details:', insertError.details);
           setError(`Create error: ${insertError.message}`);
+          toast.error(`Failed to create account: ${insertError.message}`);
           setLoading(false);
           return;
         }
 
-        console.log('✅ New user created successfully:', newUser);
+        console.log('✅ New user created successfully!');
+        console.log('New user data:', newUser);
         setUser(newUser);
+        toast.success(`Welcome, ${newUser.first_name}! 🎉`);
       }
 
+      console.log('========================================');
+      console.log('✅ AUTHENTICATION COMPLETE');
+      console.log('========================================');
       setLoading(false);
+      
     } catch (err) {
+      console.error('========================================');
+      console.error('❌ UNEXPECTED ERROR');
+      console.error('Error:', err);
+      console.error('========================================');
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      console.error('❌ Auth error:', errorMessage);
       setError(errorMessage);
+      toast.error(`Auth failed: ${errorMessage}`);
       setLoading(false);
     }
   };
@@ -157,22 +189,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signOut = async () => {
     setUser(null);
     setError(null);
+    toast.success('Signed out');
     console.log('🔓 User signed out');
   };
 
-  // Auto sign-in when Telegram user is ready
   useEffect(() => {
-    console.log('🔄 Auth effect triggered:', { isReady, telegramUser: !!telegramUser, user: !!user });
+    console.log('🔄 Auth effect:', { 
+      isReady, 
+      hasTelegramUser: !!telegramUser, 
+      hasAuthUser: !!user,
+      isTelegram 
+    });
     
     if (isReady && telegramUser && !user) {
-      console.log('▶️ Starting auto sign-in...');
+      console.log('▶️ Auto sign-in triggered');
       signIn();
     } else if (isReady && !telegramUser && !isTelegram) {
-      console.log('⚠️ Not in Telegram environment, skipping auth');
+      console.log('⚠️ Not in Telegram environment');
+      setError('Not in Telegram');
       setLoading(false);
     } else if (isReady && !telegramUser && isTelegram) {
       console.log('⚠️ In Telegram but no user data');
-      setError('Telegram user data not available');
+      setError('No Telegram user data');
       setLoading(false);
     }
   }, [isReady, telegramUser]);
