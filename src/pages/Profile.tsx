@@ -1,3 +1,18 @@
+import { useAuth } from '@/providers/AuthProvider';
+import { useTelegram } from '@/providers/TelegramProvider';
+
+// Inside Profile component, add at the top:
+const { user, loading } = useAuth();
+const { user: tgUser } = useTelegram();
+
+// Add this JSX at the very top of the return statement:
+{import.meta.env.DEV && (
+  <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded text-xs">
+    <p>🔍 Auth: {loading ? '⏳' : user ? '✅' : '❌'}</p>
+    <p>📱 TG: {tgUser ? `✅ ${tgUser.first_name}` : '❌'}</p>
+    {user && <p>💾 DB: {user.username} (ID: {user.telegram_id})</p>}
+  </div>
+)}
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useProfile } from '@/hooks/useProfile';
 import { useTelegram } from '@/hooks/useTelegram';
