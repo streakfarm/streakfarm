@@ -10,11 +10,16 @@ interface AuthUser {
   last_name?: string;
   photo_url?: string;
   created_at?: string;
+  streak_count?: number;
+  total_points?: number;
+  wallet_address?: string;
+  referral_code?: string;
 }
 
 interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
+  error: string | null;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -23,6 +28,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  error: null,
   signIn: async () => {},
   signOut: async () => {},
   refreshUser: async () => {},
@@ -31,31 +37,38 @@ const AuthContext = createContext<AuthContextType>({
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { user: telegramUser, isReady, isTelegram } = useTelegram();
 
   const signIn = async () => {
     if (!telegramUser) {
       console.error('❌ No Telegram user found');
+      setError('No Telegram user found');
       setLoading(false);
       return;
     }
 
     try {
-      console.log('🔐 Authenticating user:', telegramUser.id);
+      console.log('🔐 Starting authentication for:', telegramUser.id);
+      setError(null);
 
       // Check if user exists
       const { data: existingUser, error: fetchError } = await supabase
         .from('users')
         .select('*')
         .eq('telegram_id', telegramUser.id)
-        .single();
+        .maybeSingle();
 
-      if (fetchError && fetchError.code !== 'PGRST116') {
+      if (fetchError) {
         console.error('❌ Fetch error:', fetchError);
-        throw fetchError;
+        setError(`Database error: ${fetchError.message}`);
+        setLoading(false);
+        return;
       }
 
       if (existingUser) {
+        console.log('✅ Existing user found, updating...');
+        
         // Update existing user
         const { data: updatedUser, error: updateError } = await supabase
           .from('users')
@@ -72,12 +85,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         if (updateError) {
           console.error('❌ Update error:', updateError);
-          throw updateError;
+          setError(`Update error: ${updateError.message}`);
+          setLoading(false);
+          return;
         }
 
-        console.log('✅ User updated:', updatedUser);
+        console.log('✅ User updated successfully:', updatedUser);
         setUser(updatedUser);
       } else {
+        console.log('✅ New user, creating...');
+        
         // Create new user
         const { data: newUser, error: insertError } = await supabase
           .from('users')
@@ -89,22 +106,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             photo_url: telegramUser.photo_url,
             created_at: new Date().toISOString(),
             last_login: new Date().toISOString(),
+            streak_count: 0,
+            total_points: 0,
           })
           .select()
           .single();
 
         if (insertError) {
           console.error('❌ Insert error:', insertError);
-          throw insertError;
+          setError(`Create error: ${insertError.message}`);
+          setLoading(false);
+          return;
         }
 
-        console.log('✅ New user created:', newUser);
+        console.log('✅ New user created successfully:', newUser);
         setUser(newUser);
       }
 
       setLoading(false);
-    } catch (error) {
-      console.error('❌ Auth error:', error);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      console.error('❌ Auth error:', errorMessage);
+      setError(errorMessage);
       setLoading(false);
     }
   };
@@ -113,37 +136,49 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (!telegramUser) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error: fetchError } = await supabase
         .from('users')
         .select('*')
         .eq('telegram_id', telegramUser.id)
         .single();
 
-      if (error) throw error;
+      if (fetchError) {
+        console.error('❌ Refresh error:', fetchError);
+        return;
+      }
+      
       setUser(data);
-    } catch (error) {
-      console.error('❌ Refresh error:', error);
+      console.log('✅ User refreshed');
+    } catch (err) {
+      console.error('❌ Refresh error:', err);
     }
   };
 
   const signOut = async () => {
     setUser(null);
+    setError(null);
     console.log('🔓 User signed out');
   };
 
   // Auto sign-in when Telegram user is ready
   useEffect(() => {
+    console.log('🔄 Auth effect triggered:', { isReady, telegramUser: !!telegramUser, user: !!user });
+    
     if (isReady && telegramUser && !user) {
+      console.log('▶️ Starting auto sign-in...');
       signIn();
     } else if (isReady && !telegramUser && !isTelegram) {
-      // Not in Telegram - set loading to false
+      console.log('⚠️ Not in Telegram environment, skipping auth');
       setLoading(false);
-      console.log('⚠️ Not in Telegram environment');
+    } else if (isReady && !telegramUser && isTelegram) {
+      console.log('⚠️ In Telegram but no user data');
+      setError('Telegram user data not available');
+      setLoading(false);
     }
   }, [isReady, telegramUser]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signOut, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, error, signIn, signOut, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
