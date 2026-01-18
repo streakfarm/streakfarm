@@ -1,136 +1,94 @@
-import { createContext, useContext, ReactNode, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
-import { useTelegram } from './TelegramProvider';
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
-interface AuthUser {
+type Profile = {
   id: string;
-  telegram_id: number;
-  username: string;
-  first_name: string;
-  last_name?: string;
-  photo_url?: string;
-  created_at?: string;
-  streak_count?: number;
-  total_points?: number;
-  wallet_address?: string;
-  referral_code?: string;
-}
+  telegram_id?: string;
+  display_name?: string | null;
+  username?: string | null;
+  avatar_url?: string | null;
+  referral_code?: string | null;
+  referred_by?: string | null;
+};
 
-interface AuthContextType {
-  user: AuthUser | null;
+type AuthContextType = {
+  profile: Profile | null;
   loading: boolean;
-  signIn: () => Promise<void>;
-  signOut: () => Promise<void>;
-  refreshUser: () => Promise<void>;
-}
+  loginWithTelegram: (initData: string, startParam?: string | null) => Promise<void>;
+  logout: () => Promise<void>;
+};
 
-const AuthContext = createContext<AuthContextType>({
-  user: null,
-  loading: true,
-  signIn: async () => {},
-  signOut: async () => {},
-  refreshUser: async () => {},
-});
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const PROFILE_KEY = "sf_profile";
 
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
-  const { user: telegramUser, isReady, isTelegram } = useTelegram();
-
-  const signIn = async () => {
-    if (!telegramUser) {
-      setLoading(false);
-      return;
-    }
-
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [profile, setProfile] = useState<Profile | null>(() => {
     try {
-      const { data: existingUser, error: fetchError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('telegram_id', telegramUser.id)
-        .maybeSingle();
-
-      if (fetchError) {
-        console.error('Database error:', fetchError.message);
-        setLoading(false);
-        return;
-      }
-
-      if (existingUser) {
-        const { data: updatedUser } = await supabase
-          .from('users')
-          .update({
-            username: telegramUser.username || existingUser.username,
-            first_name: telegramUser.first_name,
-            last_name: telegramUser.last_name,
-            photo_url: telegramUser.photo_url,
-            last_login: new Date().toISOString(),
-          })
-          .eq('telegram_id', telegramUser.id)
-          .select()
-          .single();
-
-        setUser(updatedUser || existingUser);
-      } else {
-        const { data: newUser } = await supabase
-          .from('users')
-          .insert({
-            telegram_id: telegramUser.id,
-            username: telegramUser.username || `user_${telegramUser.id}`,
-            first_name: telegramUser.first_name,
-            last_name: telegramUser.last_name,
-            photo_url: telegramUser.photo_url,
-            streak_count: 0,
-            total_points: 0,
-          })
-          .select()
-          .single();
-
-        if (newUser) setUser(newUser);
-      }
-
-      setLoading(false);
-    } catch (err) {
-      console.error('Authentication error:', err);
-      setLoading(false);
+      const raw = localStorage.getItem(PROFILE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
     }
-  };
-
-  const refreshUser = async () => {
-    if (!telegramUser) return;
-
-    const { data } = await supabase
-      .from('users')
-      .select('*')
-      .eq('telegram_id', telegramUser.id)
-      .single();
-
-    if (data) setUser(data);
-  };
-
-  const signOut = async () => {
-    setUser(null);
-  };
+  });
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isReady && telegramUser && !user) {
-      signIn();
-    } else if (isReady && (!telegramUser || !isTelegram)) {
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data.session && data.session.user) {
+          // optionally refresh profile state from /profiles table
+        }
+      } catch (err) {
+        // ignore
+      }
+    })();
+  }, []);
+
+  const loginWithTelegram = async (initData: string, startParam?: string | null) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-auth`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ initData, startParam }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json?.error || "Login failed");
+      }
+
+      if (json.tokens && json.tokens.access_token) {
+        await supabase.auth.setSession({
+          access_token: json.tokens.access_token,
+          refresh_token: json.tokens.refresh_token,
+        });
+      } else if (json.fallbackAppToken) {
+        localStorage.setItem("sf_app_token", json.fallbackAppToken);
+      } else {
+        console.warn("No tokens returned from telegram-auth function", json);
+      }
+
+      const p = json.profile;
+      setProfile(p);
+      localStorage.setItem(PROFILE_KEY, JSON.stringify(p));
+    } finally {
       setLoading(false);
     }
-  }, [isReady, telegramUser]);
+  };
 
-  return (
-    <AuthContext.Provider value={{ user, loading, signIn, signOut, refreshUser }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  const logout = async () => {
+    await supabase.auth.signOut().catch(() => {});
+    setProfile(null);
+    localStorage.removeItem(PROFILE_KEY);
+    localStorage.removeItem("sf_app_token");
+  };
+
+  return <AuthContext.Provider value={{ profile, loading, loginWithTelegram, logout }}>{children}</AuthContext.Provider>;
 };
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
-};
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  return ctx;
+}
