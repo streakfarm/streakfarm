@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -15,19 +16,35 @@ function AppContent() {
   const { isLoading, isAuthenticated, authError, retryAuth } = useAuth();
   const { isTelegram } = useTelegram();
 
-  console.log("AppContent state:", { isLoading, isAuthenticated, isTelegram, authError });
+  // ✅ TELEGRAM WEBAPP HANDSHAKE (MOST IMPORTANT)
+  useEffect(() => {
+    if (window.Telegram?.WebApp) {
+      console.log("Telegram WebApp detected");
+      window.Telegram.WebApp.ready();
+      window.Telegram.WebApp.expand();
+    } else {
+      console.log("Running outside Telegram");
+    }
+  }, []);
 
-  // Show error screen if auth failed
+  console.log("AppContent state:", {
+    isLoading,
+    isAuthenticated,
+    isTelegram,
+    authError,
+  });
+
+  // ❌ Auth error
   if (authError) {
     return <SplashScreen error={authError} onRetry={retryAuth} />;
   }
 
-  // Show splash while loading
+  // ⏳ Loading
   if (isLoading) {
     return <SplashScreen />;
   }
 
-  // If not in Telegram and not authenticated, show Telegram prompt
+  // ❗ Open inside Telegram
   if (!isTelegram && !isAuthenticated) {
     return <SplashScreen showTelegramPrompt />;
   }
