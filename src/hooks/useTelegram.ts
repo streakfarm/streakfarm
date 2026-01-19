@@ -31,95 +31,66 @@ interface TelegramWebApp {
   version: string;
   platform: string;
   colorScheme: "light" | "dark";
-  themeParams: {
-    bg_color?: string;
-    text_color?: string;
-    hint_color?: string;
-    link_color?: string;
-    button_color?: string;
-    button_text_color?: string;
-    secondary_bg_color?: string;
-  };
+  themeParams: Record<string, string>;
   isExpanded: boolean;
   viewportHeight: number;
   viewportStableHeight: number;
   MainButton: {
-    text: string;
-    color: string;
-    textColor: string;
-    isVisible: boolean;
-    isActive: boolean;
-    isProgressVisible: boolean;
     setText: (text: string) => void;
     onClick: (callback: () => void) => void;
     offClick: (callback: () => void) => void;
     show: () => void;
     hide: () => void;
-    enable: () => void;
-    disable: () => void;
-    showProgress: (leaveActive?: boolean) => void;
-    hideProgress: () => void;
   };
   BackButton: {
-    isVisible: boolean;
-    onClick: (callback: () => void) => void;
-    offClick: (callback: () => void) => void;
     show: () => void;
     hide: () => void;
   };
   HapticFeedback: {
-    impactOccurred: (style: "light" | "medium" | "heavy" | "rigid" | "soft") => void;
-    notificationOccurred: (type: "error" | "success" | "warning") => void;
+    impactOccurred: (style: "light" | "medium" | "heavy") => void;
+    notificationOccurred: (type: "success" | "error" | "warning") => void;
     selectionChanged: () => void;
   };
-  openLink: (url: string, options?: { try_instant_view?: boolean }) => void;
+  openLink: (url: string) => void;
   openTelegramLink: (url: string) => void;
-  showAlert: (message: string, callback?: () => void) => void;
-  showConfirm: (message: string, callback?: (confirmed: boolean) => void) => void;
-  setHeaderColor: (color: string) => void;
-  setBackgroundColor: (color: string) => void;
+  showAlert: (message: string) => void;
+  setHeaderColor?: (color: string) => void;
+  setBackgroundColor?: (color: string) => void;
 }
 
 export function useTelegram() {
   const [webApp, setWebApp] = useState<TelegramWebApp | null>(null);
   const [user, setUser] = useState<TelegramUser | null>(null);
-  const [isReady, setIsReady] = useState(false);
   const [isTelegram, setIsTelegram] = useState(false);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
 
-    if (tg) {
-      setWebApp(tg);
-      setUser(tg.initDataUnsafe.user || null);
-      setIsTelegram(true);
-
-      // Initialize the WebApp
-      tg.ready();
-      tg.expand();
-
-      // Set theme colors only if supported (version 6.1+)
-      try {
-        const version = parseFloat(tg.version || "6.0");
-        if (version >= 6.1) {
-          tg.setHeaderColor("#0a0a0f");
-          tg.setBackgroundColor("#0a0a0f");
-        }
-      } catch (e) {
-        console.log("Theme colors not supported");
-      }
-
+    if (!tg) {
+      // ❌ Telegram nahi hai (browser / dev mode)
+      setIsTelegram(false);
       setIsReady(true);
-    } else {
-      // Development mode - mock user
-      setUser({
-        id: 123456789,
-        first_name: "Dev",
-        username: "developer",
-        language_code: "en",
-      });
-      setIsReady(true);
+      return;
     }
+
+    // ✅ Telegram WebApp detected
+    tg.ready();
+    tg.expand();
+
+    setWebApp(tg);
+    setUser(tg.initDataUnsafe?.user ?? null);
+    setIsTelegram(true);
+    setIsReady(true);
+
+    // Optional theme (safe)
+    try {
+      const v = parseFloat(tg.version || "6.0");
+      if (v >= 6.1 && tg.setHeaderColor && tg.setBackgroundColor) {
+        tg.setHeaderColor("#0a0a0f");
+        tg.setBackgroundColor("#0a0a0f");
+      }
+    } catch {}
   }, []);
 
   const hapticFeedback = useCallback(
@@ -128,10 +99,10 @@ export function useTelegram() {
 
       if (type === "selection") {
         webApp.HapticFeedback.selectionChanged();
-      } else if (["success", "error", "warning"].includes(type)) {
-        webApp.HapticFeedback.notificationOccurred(type as "success" | "error" | "warning");
+      } else if (type === "success" || type === "error" || type === "warning") {
+        webApp.HapticFeedback.notificationOccurred(type);
       } else {
-        webApp.HapticFeedback.impactOccurred(type as "light" | "medium" | "heavy");
+        webApp.HapticFeedback.impactOccurred(type);
       }
     },
     [webApp],
@@ -140,7 +111,6 @@ export function useTelegram() {
   const showMainButton = useCallback(
     (text: string, onClick: () => void) => {
       if (!webApp?.MainButton) return;
-
       webApp.MainButton.setText(text);
       webApp.MainButton.onClick(onClick);
       webApp.MainButton.show();
@@ -154,26 +124,21 @@ export function useTelegram() {
 
   const openLink = useCallback(
     (url: string) => {
-      if (webApp) {
-        webApp.openLink(url);
-      } else {
-        window.open(url, "_blank");
-      }
+      webApp ? webApp.openLink(url) : window.open(url, "_blank");
     },
     [webApp],
   );
 
   const shareRef = useCallback(
     (refCode: string) => {
-      const shareUrl = `https://t.me/StreakFarmBot?start=${refCode}`;
-      const shareText = "🔥 Join StreakFarm and earn points! Use my referral link:";
-
+      const url = `https://t.me/StreakFarmBot?start=${refCode}`;
+      const text = "🔥 Join StreakFarm and earn points!";
       if (webApp) {
         webApp.openTelegramLink(
-          `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`,
+          `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`,
         );
       } else {
-        navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
+        navigator.clipboard.writeText(`${text}\n${url}`);
       }
     },
     [webApp],
@@ -184,8 +149,8 @@ export function useTelegram() {
     user,
     isReady,
     isTelegram,
-    initData: webApp?.initData || "",
-    startParam: webApp?.initDataUnsafe.start_param,
+    initData: webApp?.initData ?? "",
+    startParam: webApp?.initDataUnsafe?.start_param,
     hapticFeedback,
     showMainButton,
     hideMainButton,
