@@ -1,0 +1,449 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* STREAKFARM Design System - Dark Gamified Theme */
+
+@layer base {
+  :root {
+    /* Primary dark gaming theme */
+    --background: 230 25% 7%;
+    --foreground: 210 40% 98%;
+
+    --card: 230 25% 10%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 230 25% 12%;
+    --popover-foreground: 210 40% 98%;
+
+    /* Orange/Gold accent - Gaming energy */
+    --primary: 32 95% 55%;
+    --primary-foreground: 230 25% 7%;
+
+    /* Purple secondary - Mystery/Rewards */
+    --secondary: 270 70% 55%;
+    --secondary-foreground: 210 40% 98%;
+
+    /* Dark muted backgrounds */
+    --muted: 230 20% 15%;
+    --muted-foreground: 215 20% 65%;
+
+    /* Cyan accent - Tech/Wallet */
+    --accent: 185 80% 50%;
+    --accent-foreground: 230 25% 7%;
+
+    /* Red for warnings/streak breaks */
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 210 40% 98%;
+
+    /* Borders */
+    --border: 230 20% 18%;
+    --input: 230 20% 15%;
+    --ring: 32 95% 55%;
+
+    --radius: 0.75rem;
+
+    /* Gaming colors */
+    --streak: 32 95% 55%;
+    --streak-glow: 32 100% 60%;
+    --points: 48 100% 55%;
+    --points-glow: 48 100% 65%;
+    --box-common: 215 20% 50%;
+    --box-rare: 270 70% 60%;
+    --box-legendary: 48 100% 55%;
+    --badge-glow: 270 100% 70%;
+    --wallet: 185 80% 50%;
+    --success: 142 70% 50%;
+    --warning: 38 92% 50%;
+
+    /* Rarity colors */
+    --rarity-common: 215 20% 55%;
+    --rarity-rare: 220 80% 60%;
+    --rarity-epic: 270 80% 60%;
+    --rarity-legendary: 48 100% 55%;
+    --rarity-mythic: 320 90% 60%;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(32 95% 55%), hsl(45 100% 60%));
+    --gradient-secondary: linear-gradient(135deg, hsl(270 70% 55%), hsl(300 70% 60%));
+    --gradient-accent: linear-gradient(135deg, hsl(185 80% 50%), hsl(200 80% 55%));
+    --gradient-legendary: linear-gradient(135deg, hsl(48 100% 55%), hsl(32 95% 55%));
+    --gradient-mythic: linear-gradient(135deg, hsl(320 90% 60%), hsl(270 80% 60%));
+
+    /* Shadows */
+    --shadow-glow-primary: 0 0 30px hsl(32 95% 55% / 0.4);
+    --shadow-glow-secondary: 0 0 30px hsl(270 70% 55% / 0.4);
+    --shadow-glow-accent: 0 0 30px hsl(185 80% 50% / 0.4);
+    --shadow-glow-legendary: 0 0 40px hsl(48 100% 55% / 0.5);
+
+    /* Sidebar */
+    --sidebar-background: 230 25% 8%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 32 95% 55%;
+    --sidebar-primary-foreground: 230 25% 7%;
+    --sidebar-accent: 230 20% 15%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 230 20% 18%;
+    --sidebar-ring: 32 95% 55%;
+  }
+
+  .dark {
+    /* Same as root - always dark theme for gaming */
+    --background: 230 25% 7%;
+    --foreground: 210 40% 98%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  /* Custom scrollbar for gaming feel */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.5);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.7);
+  }
+}
+
+@layer components {
+  /* Gaming card effects */
+  .card-glow {
+    position: relative;
+  }
+
+  .card-glow::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, hsl(var(--primary) / 0.3), transparent, hsl(var(--secondary) / 0.3));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* Pulsing glow for active elements */
+  .pulse-glow {
+    animation: pulseGlow 2s ease-in-out infinite;
+  }
+
+  @keyframes pulseGlow {
+    0%, 100% {
+      box-shadow: 0 0 10px hsl(var(--primary) / 0.3);
+    }
+    50% {
+      box-shadow: 0 0 25px hsl(var(--primary) / 0.6);
+    }
+  }
+
+  /* Streak fire animation */
+  .streak-fire {
+    animation: firePulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes firePulse {
+    0%, 100% {
+      filter: drop-shadow(0 0 8px hsl(var(--streak)));
+      transform: scale(1);
+    }
+    50% {
+      filter: drop-shadow(0 0 16px hsl(var(--streak-glow)));
+      transform: scale(1.05);
+    }
+  }
+
+  /* Box shimmer effect */
+  .box-shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .box-shimmer::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(
+      45deg,
+      transparent 40%,
+      hsl(var(--primary) / 0.1) 50%,
+      transparent 60%
+    );
+    animation: shimmer 3s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%) rotate(45deg);
+    }
+    100% {
+      transform: translateX(100%) rotate(45deg);
+    }
+  }
+
+  /* Badge glow effect by rarity */
+  .badge-common {
+    box-shadow: 0 0 10px hsl(var(--rarity-common) / 0.3);
+  }
+
+  .badge-rare {
+    box-shadow: 0 0 15px hsl(var(--rarity-rare) / 0.4);
+    animation: badgeGlowRare 2s ease-in-out infinite;
+  }
+
+  @keyframes badgeGlowRare {
+    0%, 100% {
+      box-shadow: 0 0 10px hsl(var(--rarity-rare) / 0.3);
+    }
+    50% {
+      box-shadow: 0 0 20px hsl(var(--rarity-rare) / 0.5);
+    }
+  }
+
+  .badge-epic {
+    box-shadow: 0 0 20px hsl(var(--rarity-epic) / 0.5);
+    animation: badgeGlowEpic 2s ease-in-out infinite;
+  }
+
+  @keyframes badgeGlowEpic {
+    0%, 100% {
+      box-shadow: 0 0 15px hsl(var(--rarity-epic) / 0.4);
+    }
+    50% {
+      box-shadow: 0 0 25px hsl(var(--rarity-epic) / 0.6);
+    }
+  }
+
+  .badge-legendary {
+    box-shadow: 0 0 25px hsl(var(--rarity-legendary) / 0.6);
+    animation: badgeGlowLegendary 1.5s ease-in-out infinite;
+  }
+
+  @keyframes badgeGlowLegendary {
+    0%, 100% {
+      box-shadow: 0 0 20px hsl(var(--rarity-legendary) / 0.5);
+    }
+    50% {
+      box-shadow: 0 0 35px hsl(var(--rarity-legendary) / 0.8);
+    }
+  }
+
+  .badge-mythic {
+    box-shadow: 0 0 30px hsl(var(--rarity-mythic) / 0.7);
+    animation: badgeGlowMythic 1.2s ease-in-out infinite;
+  }
+
+  @keyframes badgeGlowMythic {
+    0%, 100% {
+      box-shadow: 0 0 25px hsl(var(--rarity-mythic) / 0.6);
+    }
+    50% {
+      box-shadow: 0 0 45px hsl(var(--rarity-mythic) / 0.9);
+    }
+  }
+
+  /* Point counter animation */
+  .points-counter {
+    background: linear-gradient(135deg, hsl(var(--points)), hsl(var(--points-glow)));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 0 10px hsl(var(--points) / 0.5));
+  }
+
+  /* Multiplier badge */
+  .multiplier-badge {
+    background: linear-gradient(135deg, hsl(var(--secondary)), hsl(var(--primary)));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Tab bar styling */
+  .tab-active {
+    position: relative;
+  }
+
+  .tab-active::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60%;
+    height: 3px;
+    background: hsl(var(--primary));
+    border-radius: 2px;
+    box-shadow: 0 0 10px hsl(var(--primary) / 0.5);
+  }
+
+  /* Confetti container */
+  .confetti-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9999;
+    overflow: hidden;
+  }
+
+  /* Loading skeleton with gaming vibe */
+  .skeleton-gaming {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 0%,
+      hsl(var(--muted) / 0.5) 50%,
+      hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeletonPulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes skeletonPulse {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  /* Safe area insets for Telegram iOS */
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 20px);
+  }
+
+  /* Mobile viewport fix */
+  .mobile-vh {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  /* Hide scrollbar */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Neon glow effects */
+  .neon-glow-primary {
+    box-shadow: 0 0 10px hsl(var(--primary) / 0.5), 0 0 20px hsl(var(--primary) / 0.3);
+  }
+
+  .neon-glow-secondary {
+    box-shadow: 0 0 10px hsl(var(--secondary) / 0.5), 0 0 20px hsl(var(--secondary) / 0.3);
+  }
+
+  /* Mythic badge glow */
+  .mythic-glow {
+    animation: mythicGlow 2s ease-in-out infinite;
+  }
+
+  @keyframes mythicGlow {
+    0%, 100% {
+      box-shadow: 0 0 20px hsl(var(--rarity-mythic) / 0.5);
+    }
+    50% {
+      box-shadow: 0 0 40px hsl(var(--rarity-mythic) / 0.8), 0 0 60px hsl(var(--rarity-mythic) / 0.4);
+    }
+  }
+}
+
+@layer utilities {
+  /* Text shadows for gaming */
+  .text-shadow-glow {
+    text-shadow: 0 0 10px currentColor;
+  }
+
+  /* Gradient text */
+  .text-gradient-primary {
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(48 100% 60%));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient-secondary {
+    background: linear-gradient(135deg, hsl(var(--secondary)), hsl(var(--accent)));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Rarity text colors */
+  .text-rarity-common {
+    color: hsl(var(--rarity-common));
+  }
+
+  .text-rarity-rare {
+    color: hsl(var(--rarity-rare));
+  }
+
+  .text-rarity-epic {
+    color: hsl(var(--rarity-epic));
+  }
+
+  .text-rarity-legendary {
+    color: hsl(var(--rarity-legendary));
+  }
+
+  .text-rarity-mythic {
+    color: hsl(var(--rarity-mythic));
+  }
+
+  /* Rarity backgrounds */
+  .bg-rarity-common {
+    background: hsl(var(--rarity-common) / 0.2);
+  }
+
+  .bg-rarity-rare {
+    background: hsl(var(--rarity-rare) / 0.2);
+  }
+
+  .bg-rarity-epic {
+    background: hsl(var(--rarity-epic) / 0.2);
+  }
+
+  .bg-rarity-legendary {
+    background: hsl(var(--rarity-legendary) / 0.2);
+  }
+
+  .bg-rarity-mythic {
+    background: hsl(var(--rarity-mythic) / 0.2);
+  }
+}
