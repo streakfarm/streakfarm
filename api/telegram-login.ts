@@ -1,74 +1,52 @@
-import crypto from "crypto";
-import jwt from "jsonwebtoken";
 import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-function verifyTelegram(initData: string, botToken: string) {
-  const params = new URLSearchParams(initData);
-  const hash = params.get("hash");
-  params.delete("hash");
-
-  const dataCheckString = [...params.entries()]
-    .sort()
-    .map(([k, v]) => `${k}=${v}`)
-    .join("\n");
-
-  const secret = crypto
-    .createHash("sha256")
-    .update(botToken)
-    .digest();
-
-  const computedHash = crypto
-    .createHmac("sha256", secret)
-    .update(dataCheckString)
-    .digest("hex");
-
-  return computedHash === hash;
-}
-
 export default async function handler(req, res) {
   try {
-    if (req.method !== "POST") {
-      return res.status(405).json({ error: "Method not allowed" });
-    }
-
     const { initData } = req.body;
+    if (!initData) return res.status(400).json({ error: "No initData" });
 
-    if (!initData) {
-      return res.status(400).json({ error: "Missing initData" });
-    }
+    const parsed = new URLSearchParams(initData);
+    const hash = parsed.get("hash");
+    parsed.delete("hash");
 
-    const isValid = verifyTelegram(
-      initData,
-      process.env.TG_BOT_TOKEN!
-    );
+    const dataCheckString = [...parsed.entries()]
+      .sort()
+      .map(([k, v]) => `${k}=${v}`)
+      .join("\n");
 
-    if (!isValid) {
-      return res.status(401).json({ error: "Invalid Telegram auth" });
-    }
+    const secret = crypto
+      .createHash("sha256")
+      .update(process.env.TELEGRAM_BOT_TOKEN!)
+      .digest();
 
-    const params = new URLSearchParams(initData);
-    const user = JSON.parse(params.get("user")!);
+    const computedHash = crypto
+      .createHmac("sha256", secret)
+      .update(dataCheckString)
+      .digest("hex");
 
-    await supabase.from("users").upsert({
-      telegram_id: user.id,
-      username: user.username,
-      first_name: user.first_name,
-    });
+    if (computedHash !== hash)
+      return res.status(403).json({ error: "Invalid Telegram auth" });
 
-    const token = jwt.sign(
-      { telegram_id: user.id },
-      process.env.JWT_SECRET!,
-      { expiresIn: "7d" }
-    );
+    const user = JSON.parse(parsed.get("user")!);
 
-    return res.json({ token });
+    const { data } = await supabase
+      .from("users")
+      .upsert({
+        telegram_id: user.id,
+        username: user.username,
+        first_name: user.first_name,
+      })
+      .select()
+      .single();
+
+    return res.json({ user: data });
   } catch (e) {
-    console.error(e);
-    return res.status(500).json({ error: "Telegram auth failed" });
+    return res.status(500).json({ error: "Login failed" });
   }
 }
