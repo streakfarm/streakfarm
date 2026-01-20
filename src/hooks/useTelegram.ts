@@ -31,13 +31,14 @@ export function useTelegram() {
   const [isTelegram, setIsTelegram] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [initData, setInitData] = useState("");
+  const [startParam, setStartParam] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    // ⏳ Telegram injects WebApp after page load
+    // Telegram injects WebApp slightly after load
     const timer = setTimeout(() => {
       const tg = (window as any)?.Telegram?.WebApp as TelegramWebApp | undefined;
 
-      if (!tg) {
+      if (!tg || !tg.initData) {
         // Browser / preview mode
         setIsTelegram(false);
         setIsReady(true);
@@ -49,6 +50,7 @@ export function useTelegram() {
 
       setUser(tg.initDataUnsafe?.user ?? null);
       setInitData(tg.initData);
+      setStartParam(tg.initDataUnsafe?.start_param);
       setIsTelegram(true);
       setIsReady(true);
     }, 50);
@@ -57,7 +59,15 @@ export function useTelegram() {
   }, []);
 
   const haptic = useCallback(
-    (type: "light" | "medium" | "heavy" | "success" | "error" | "warning") => {
+    (
+      type:
+        | "light"
+        | "medium"
+        | "heavy"
+        | "success"
+        | "error"
+        | "warning"
+    ) => {
       const tg = (window as any)?.Telegram?.WebApp as TelegramWebApp | undefined;
       if (!tg?.HapticFeedback) return;
 
@@ -84,9 +94,9 @@ export function useTelegram() {
     user,
     isTelegram,
     isReady,
-    initData,
-    startParam: user ? undefined : undefined,
+    initData,     // 👉 backend (/api/telegram-login) ko yahi bhejna hai
+    startParam,   // 👉 referral / deep-link ke liye
     haptic,
-    shareRef
+    shareRef,
   };
 }
