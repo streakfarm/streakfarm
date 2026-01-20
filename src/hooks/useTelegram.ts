@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from "react";
-import WebApp from "@twa-dev/sdk";
 
 interface TelegramUser {
   id: number;
@@ -10,104 +9,84 @@ interface TelegramUser {
   photo_url?: string;
 }
 
+interface TelegramWebApp {
+  initData: string;
+  initDataUnsafe: {
+    user?: TelegramUser;
+    start_param?: string;
+  };
+  ready: () => void;
+  expand: () => void;
+  close: () => void;
+  HapticFeedback?: {
+    impactOccurred: (style: "light" | "medium" | "heavy") => void;
+    notificationOccurred: (type: "success" | "error" | "warning") => void;
+    selectionChanged: () => void;
+  };
+  openTelegramLink: (url: string) => void;
+}
+
 export function useTelegram() {
   const [user, setUser] = useState<TelegramUser | null>(null);
   const [isTelegram, setIsTelegram] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [initData, setInitData] = useState("");
 
   useEffect(() => {
-    try {
-      // ✅ Telegram WebApp available ONLY inside Telegram
-      if (!WebApp || !WebApp.initData) {
+    // ⏳ Telegram injects WebApp after page load
+    const timer = setTimeout(() => {
+      const tg = (window as any)?.Telegram?.WebApp as TelegramWebApp | undefined;
+
+      if (!tg) {
+        // Browser / preview mode
         setIsTelegram(false);
         setIsReady(true);
         return;
       }
 
-      WebApp.ready();
-      WebApp.expand();
+      tg.ready();
+      tg.expand();
 
-      setUser(WebApp.initDataUnsafe?.user ?? null);
+      setUser(tg.initDataUnsafe?.user ?? null);
+      setInitData(tg.initData);
       setIsTelegram(true);
       setIsReady(true);
+    }, 50);
 
-      // Optional theme (safe)
-      try {
-        const v = parseFloat(WebApp.version || "6.0");
-        if (v >= 6.1 && WebApp.setHeaderColor && WebApp.setBackgroundColor) {
-          WebApp.setHeaderColor("#0a0a0f");
-          WebApp.setBackgroundColor("#0a0a0f");
-        }
-      } catch {}
-    } catch (e) {
-      console.error("Telegram init failed", e);
-      setIsTelegram(false);
-      setIsReady(true);
-    }
+    return () => clearTimeout(timer);
   }, []);
 
-  const hapticFeedback = useCallback(
-    (
-      type:
-        | "light"
-        | "medium"
-        | "heavy"
-        | "success"
-        | "error"
-        | "warning"
-        | "selection",
-    ) => {
-      if (!WebApp?.HapticFeedback) return;
+  const haptic = useCallback(
+    (type: "light" | "medium" | "heavy" | "success" | "error" | "warning") => {
+      const tg = (window as any)?.Telegram?.WebApp as TelegramWebApp | undefined;
+      if (!tg?.HapticFeedback) return;
 
-      if (type === "selection") {
-        WebApp.HapticFeedback.selectionChanged();
-      } else if (type === "success" || type === "error" || type === "warning") {
-        WebApp.HapticFeedback.notificationOccurred(type);
+      if (type === "success" || type === "error" || type === "warning") {
+        tg.HapticFeedback.notificationOccurred(type);
       } else {
-        WebApp.HapticFeedback.impactOccurred(type);
+        tg.HapticFeedback.impactOccurred(type);
       }
     },
-    [],
+    []
   );
 
-  const showMainButton = useCallback((text: string, onClick: () => void) => {
-    if (!WebApp?.MainButton) return;
-    WebApp.MainButton.setText(text);
-    WebApp.MainButton.onClick(onClick);
-    WebApp.MainButton.show();
-  }, []);
-
-  const hideMainButton = useCallback(() => {
-    WebApp?.MainButton?.hide();
-  }, []);
-
-  const openLink = useCallback((url: string) => {
-    WebApp ? WebApp.openLink(url) : window.open(url, "_blank");
-  }, []);
-
   const shareRef = useCallback((refCode: string) => {
+    const tg = (window as any)?.Telegram?.WebApp as TelegramWebApp | undefined;
+    if (!tg) return;
+
     const url = `https://t.me/StreakFarmBot?start=${refCode}`;
-    const text = "🔥 Join StreakFarm and earn points!";
-    if (WebApp) {
-      WebApp.openTelegramLink(
-        `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`,
-      );
-    } else {
-      navigator.clipboard.writeText(`${text}\n${url}`);
-    }
+    tg.openTelegramLink(
+      `https://t.me/share/url?url=${encodeURIComponent(url)}`
+    );
   }, []);
 
   return {
-    webApp: WebApp,
     user,
-    isReady,
     isTelegram,
-    initData: WebApp?.initData || "",
-    startParam: WebApp?.initDataUnsafe?.start_param,
-    hapticFeedback,
-    showMainButton,
-    hideMainButton,
-    openLink,
-    shareRef,
+    isReady,
+    initData,
+    startParam: user ? undefined : undefined,
+    haptic,
+    shareRef
   };
 }
