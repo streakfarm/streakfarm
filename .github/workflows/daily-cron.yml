@@ -1,0 +1,19 @@
+name: Daily Supabase Cron
+
+on:
+  schedule:
+    - cron: "0 0 * * *"   # 12:00 AM UTC (India = 5:30 AM)
+  workflow_dispatch:     # Manual trigger (testing ke liye)
+
+jobs:
+  run-cron:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call Supabase daily-cron
+        run: |
+          curl -X POST https://YOUR_PROJECT_ID.supabase.co/functions/v1/daily-cron \
+          -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+          -H "Content-Type: application/json"
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
