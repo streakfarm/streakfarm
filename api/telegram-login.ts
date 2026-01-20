@@ -1,28 +1,32 @@
-import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-export default async function handler(req, res) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { initData } = req.body;
-    if (!initData) return res.status(400).json({ error: "No initData" });
 
-    const parsed = new URLSearchParams(initData);
-    const hash = parsed.get("hash");
-    parsed.delete("hash");
+    if (!initData) {
+      return res.status(400).json({ error: "Missing initData" });
+    }
 
-    const dataCheckString = [...parsed.entries()]
-      .sort()
+    const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+    if (!BOT_TOKEN) {
+      throw new Error("BOT TOKEN NOT SET");
+    }
+
+    // ---------- VERIFY TELEGRAM SIGNATURE ----------
+    const params = new URLSearchParams(initData);
+    const hash = params.get("hash");
+    params.delete("hash");
+
+    const dataCheckString = Array.from(params.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => `${k}=${v}`)
       .join("\n");
 
     const secret = crypto
       .createHash("sha256")
-      .update(process.env.TELEGRAM_BOT_TOKEN!)
+      .update(BOT_TOKEN)
       .digest();
 
     const computedHash = crypto
@@ -30,23 +34,28 @@ export default async function handler(req, res) {
       .update(dataCheckString)
       .digest("hex");
 
-    if (computedHash !== hash)
-      return res.status(403).json({ error: "Invalid Telegram auth" });
+    if (computedHash !== hash) {
+      return res.status(401).json({ error: "Invalid Telegram signature" });
+    }
 
-    const user = JSON.parse(parsed.get("user")!);
+    // ---------- PARSE USER ----------
+    const user = JSON.parse(params.get("user") || "{}");
 
-    const { data } = await supabase
-      .from("users")
-      .upsert({
-        telegram_id: user.id,
-        username: user.username,
-        first_name: user.first_name,
-      })
-      .select()
-      .single();
+    if (!user.id) {
+      return res.status(400).json({ error: "User missing" });
+    }
 
-    return res.json({ user: data });
-  } catch (e) {
-    return res.status(500).json({ error: "Login failed" });
+    return res.status(200).json({
+      ok: true,
+      telegram_id: user.id,
+      username: user.username,
+      first_name: user.first_name,
+    });
+  } catch (err: any) {
+    console.error("Telegram login error:", err);
+    return res.status(500).json({
+      error: "Server configuration error",
+      message: err.message,
+    });
   }
 }
