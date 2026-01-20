@@ -12,7 +12,7 @@ jobs:
     steps:
       - name: Call Supabase daily-cron
         run: |
-          curl -X POST https://YOUR_PROJECT_ID.supabase.co/functions/v1/daily-cron \
+          curl -X POST https://hhybahxymnbatdthlfic.supabase.co/functions/v1/daily-cron \
           -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
           -H "Content-Type: application/json"
         env:
