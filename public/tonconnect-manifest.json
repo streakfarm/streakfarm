@@ -1,7 +1,5 @@
 {
-  "url": "https://streakfarm.app",
+  "url": "https://streakfarm.vercel.app",
   "name": "StreakFarm",
-  "iconUrl": "https://streakfarm.app/logo.png",
-  "termsOfUseUrl": "https://streakfarm.app/terms",
-  "privacyPolicyUrl": "https://streakfarm.app/privacy"
+  "iconUrl": "https://streakfarm.vercel.app/icon-192.png"
 }
