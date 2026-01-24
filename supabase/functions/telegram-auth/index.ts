@@ -58,14 +58,18 @@ function validateTelegramData(initData: string, botToken: string): TelegramUser 
 }
 
 Deno.serve(async (req) => {
+  console.log("telegram-auth function called, method:", req.method);
+  
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const { initData, startParam } = await req.json();
+    console.log("Received initData length:", initData?.length || 0, "startParam:", startParam || "none");
 
     if (!initData || typeof initData !== "string") {
+      console.error("Missing or invalid initData");
       return new Response(
         JSON.stringify({ error: "Missing or invalid initData" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -73,10 +77,23 @@ Deno.serve(async (req) => {
     }
 
     const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    
+    console.log("Environment check - BOT_TOKEN exists:", !!botToken, "SUPABASE_URL exists:", !!supabaseUrl, "SERVICE_ROLE_KEY exists:", !!serviceRoleKey);
+    
     if (!botToken) {
-      console.error("TELEGRAM_BOT_TOKEN not configured");
+      console.error("TELEGRAM_BOT_TOKEN not configured - available env keys:", Object.keys(Deno.env.toObject()).filter(k => !k.includes("KEY") && !k.includes("TOKEN") && !k.includes("SECRET")));
       return new Response(
-        JSON.stringify({ error: "Server configuration error" }),
+        JSON.stringify({ error: "Server configuration error", detail: "BOT_TOKEN missing" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
+    if (!supabaseUrl || !serviceRoleKey) {
+      console.error("Supabase credentials not configured");
+      return new Response(
+        JSON.stringify({ error: "Server configuration error", detail: "Supabase config missing" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
