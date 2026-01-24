@@ -1,1 +1,55 @@
-project_id = "xuduonnnkrxegznqlqfs"
+project_id = "blnflutjwgudhouiiwga"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[auth]
+enabled = true
+site_url = "https://streakfarm.vercel.app"
+
+[functions.telegram-auth]
+verify_jwt = false
+
+[functions.daily-checkin]
+verify_jwt = false
+
+[functions.generate-daily-boxes]
+verify_jwt = false
+
+[functions.open-box]
+verify_jwt = false
+
+[functions.complete-task]
+verify_jwt = false
+
+[functions.create-snapshot]
+verify_jwt = false
+
+[functions.admin-action]
+verify_jwt = false
+
+[functions.expire-boxes]
+verify_jwt = false
+
+[functions.update-leaderboards]
+verify_jwt = false
+
+[functions.connect-wallet]
+verify_jwt = false
+
+[functions.get-user-data]
+verify_jwt = false
+
+[functions.award-wallet-badge]
+verify_jwt = false
+
+[functions.send-telegram-notification]
+verify_jwt = false
