@@ -33,8 +33,9 @@ function validateTelegramData(initData: string, botToken: string): TelegramUser 
     dataCheckArr.sort();
     const dataCheckString = dataCheckArr.join("\n");
 
-    // Create secret key from bot token
-    const secretKey = createHmac("sha256", "WebAppData").update(botToken).digest();
+    // Correct: Key is botToken, Data is "WebAppData"
+const secretKey = createHmac("sha256", botToken).update("WebAppData").digest();
+
     
     // Calculate hash
     const calculatedHash = createHmac("sha256", secretKey)
