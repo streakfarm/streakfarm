@@ -34,17 +34,17 @@ export function useTelegram() {
   const [startParam, setStartParam] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    // Telegram injects WebApp slightly after load
-    const timer = setTimeout(() => {
-      const tg = (window as any)?.Telegram?.WebApp as TelegramWebApp | undefined;
+    const tg = (window as any)?.Telegram?.WebApp as TelegramWebApp | undefined;
 
-      if (!tg || !tg.initData) {
-        // Browser / preview mode
-        setIsTelegram(false);
-        setIsReady(true);
-        return;
-      }
+    if (!tg) {
+      // Browser / preview mode
+      setIsTelegram(false);
+      setIsReady(true);
+      return;
+    }
 
+    // Use the ready event for a more reliable initialization
+    const onReady = () => {
       tg.ready();
       tg.expand();
 
@@ -53,9 +53,26 @@ export function useTelegram() {
       setStartParam(tg.initDataUnsafe?.start_param);
       setIsTelegram(true);
       setIsReady(true);
-    }, 50);
+    };
 
-    return () => clearTimeout(timer);
+    if (tg.initData) {
+      // If initData is already available, call onReady immediately
+      onReady();
+    } else {
+      // Otherwise, wait for the ready event
+      tg.onEvent('main_button_pressed', onReady);
+      tg.onEvent('viewport_changed', onReady);
+      tg.onEvent('theme_changed', onReady);
+      // Fallback to a timeout if the events don't fire (e.g., older Telegram clients)
+      const timeout = setTimeout(onReady, 500);
+      
+      return () => {
+        tg.offEvent('main_button_pressed', onReady);
+        tg.offEvent('viewport_changed', onReady);
+        tg.offEvent('theme_changed', onReady);
+        clearTimeout(timeout);
+      };
+    }
   }, []);
 
   const haptic = useCallback(

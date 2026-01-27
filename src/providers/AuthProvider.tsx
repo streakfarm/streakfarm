@@ -81,10 +81,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setIsLoading(false);
       return;
     }
+
+    // If we have a session but it's expired, try to refresh it
+    if (session && session.expires_at && session.expires_at * 1000 < Date.now()) {
+      console.log('Session expired, attempting refresh...');
+      const { error } = await supabase.auth.refreshSession();
+      if (!error) {
+        console.log('Session refreshed successfully');
+        setIsLoading(false);
+        return;
+      }
+      console.error('Failed to refresh session:', error);
+      // Fall through to attempt Telegram login
+    }
     
     // Skip if not in Telegram or no initData
     if (!initData || !initData.trim()) {
-      console.log('No initData, not in Telegram WebApp');
+      console.log('No initData, not in Telegram WebApp. Setting loading to false.');
       setIsLoading(false);
       return;
     }
