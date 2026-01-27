@@ -1,92 +1,41 @@
-import { useEffect } from "react";
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter } from "react-router-dom";
-import { AuthProvider, useAuth } from "@/providers/AuthProvider";
-import { TonWalletProvider } from "@/hooks/useTonWallet";
-import { SplashScreen } from "@/components/SplashScreen";
-import { useTelegram } from "@/hooks/useTelegram";
-import { AnimatedRoutes } from "@/components/layout/AnimatedRoutes";
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 2,
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
-      staleTime: 5 * 60 * 1000, // 5 minutes
-    },
-  },
-});
-
 function AppContent() {
   const { isLoading, isAuthenticated, authError, retryAuth } = useAuth();
   const { isTelegram, isReady, error: telegramError } = useTelegram();
 
-  // ✅ TELEGRAM WEBAPP HANDSHAKE (MOST IMPORTANT)
+  // 🔥 ADD THIS DEBUG UI
   useEffect(() => {
-    if (window.Telegram?.WebApp) {
-      console.log("Telegram WebApp detected - calling ready() and expand()");
-      try {
-        window.Telegram.WebApp.ready();
-        window.Telegram.WebApp.expand();
-      } catch (e) {
-        console.warn("Error calling Telegram WebApp methods:", e);
-      }
-    } else {
-      console.log("Running outside Telegram (browser mode)");
-    }
-  }, []);
+    console.log("🔥 AppContent state:", {
+      isLoading,
+      isAuthenticated,
+      isTelegram,
+      isReady,
+      authError,
+      telegramError,
+    });
+  }, [isLoading, isAuthenticated, isTelegram, isReady]);
 
-  console.log("AppContent state:", {
-    isLoading,
-    isAuthenticated,
-    isTelegram,
-    isReady,
-    authError,
-    telegramError,
-  });
-
-  // ❌ Auth error
-  if (authError) {
-    return <SplashScreen error={authError} onRetry={retryAuth} />;
-  }
-
-  // ❌ Telegram initialization error
-  if (telegramError) {
-    return <SplashScreen error={telegramError} onRetry={retryAuth} />;
-  }
-
-  // ⏳ Loading (auth or Telegram initialization)
-  if (isLoading || !isReady) {
-    return <SplashScreen />;
-  }
-
-  // ❗ Not in Telegram and not authenticated - show prompt
-  if (!isTelegram && !isAuthenticated) {
-    return <SplashScreen showTelegramPrompt />;
-  }
-
+  // 🔥 TEMPORARY: Force show debug info on screen
   return (
-    <BrowserRouter>
-      <AnimatedRoutes />
-    </BrowserRouter>
+    <div style={{ 
+      padding: "20px", 
+      background: "#1a1a2e", 
+      color: "#fff",
+      minHeight: "100vh",
+      fontFamily: "monospace"
+    }}>
+      <h2>🔧 DEBUG MODE</h2>
+      <pre style={{ background: "#333", padding: "10px", borderRadius: "8px" }}>
+        {JSON.stringify({
+          isLoading,
+          isAuthenticated,
+          isTelegram,
+          isReady,
+          authError: authError || "null",
+          telegramError: telegramError || "null"
+        }, null, 2)}
+      </pre>
+    </div>
   );
+
+  // ... baaki code comment kar de temporarily
 }
-
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TonWalletProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <AppContent />
-        </TooltipProvider>
-      </TonWalletProvider>
-    </AuthProvider>
-  </QueryClientProvider>
-);
-
-export default App;
