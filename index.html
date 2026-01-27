@@ -3,23 +3,26 @@
   <head>
     <meta charset="UTF-8" />
 
-    <!-- Viewport -->
+    <!-- Telegram WebApp Compatible Viewport -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
 
-    <title>Streakfarm</title>
+    <!-- Telegram WebApp specific meta tags -->
+    <meta name="telegram:bot" content="@StreakFarmBot" />
+
+    <title>StreakFarm</title>
 
     <!-- Primary Meta -->
     <meta
       name="description"
-      content="Streakfarm – Earn points and rewards by completing daily streaks and habits."
+      content="StreakFarm – Earn points and rewards by completing daily streaks and habits."
     />
-    <meta name="author" content="Streakfarm" />
+    <meta name="author" content="StreakFarm" />
 
     <!-- Open Graph -->
-    <meta property="og:title" content="Streakfarm" />
+    <meta property="og:title" content="StreakFarm" />
     <meta
       property="og:description"
       content="Earn points and rewards by completing daily streaks and habits."
@@ -28,14 +31,44 @@
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="Streakfarm" />
+    <meta name="twitter:title" content="StreakFarm" />
     <meta
       name="twitter:description"
       content="Earn points and rewards by completing daily streaks and habits."
     />
 
-    <!-- Telegram WebApp SDK -->
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Telegram WebApp SDK - Load synchronously before app -->
+    <script src="https://telegram.org/js/telegram-web-app.js?56"></script>
+
+    <!-- Critical: Initialize Telegram WebApp immediately -->
+    <script>
+      // Initialize Telegram WebApp as soon as script loads
+      window.TelegramWebAppReady = false;
+      window.TelegramWebAppInitData = null;
+
+      (function initTelegramWebApp() {
+        if (window.Telegram?.WebApp) {
+          try {
+            const tg = window.Telegram.WebApp;
+            // Store initData before calling ready()
+            window.TelegramWebAppInitData = tg.initData || '';
+            console.log('[Telegram Pre-init] initData length:', window.TelegramWebAppInitData.length);
+
+            // Call ready() immediately as per Telegram docs
+            tg.ready();
+            tg.expand();
+
+            window.TelegramWebAppReady = true;
+            console.log('[Telegram Pre-init] WebApp ready and expanded');
+          } catch (e) {
+            console.error('[Telegram Pre-init] Error:', e);
+          }
+        } else {
+          console.log('[Telegram Pre-init] Not running in Telegram');
+          window.TelegramWebAppReady = true;
+        }
+      })();
+    </script>
   </head>
 
   <body>

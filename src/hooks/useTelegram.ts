@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 
 interface TelegramUser {
   id: number;
@@ -7,6 +7,7 @@ interface TelegramUser {
   username?: string;
   language_code?: string;
   photo_url?: string;
+  is_premium?: boolean;
 }
 
 interface TelegramWebApp {
@@ -16,6 +17,7 @@ interface TelegramWebApp {
     start_param?: string;
     auth_date?: number;
     hash?: string;
+    query_id?: string;
   };
   ready: () => void;
   expand: () => void;
@@ -35,6 +37,38 @@ interface TelegramWebApp {
   isExpanded: boolean;
   viewportHeight: number;
   viewportStableHeight: number;
+  headerColor: string;
+  backgroundColor: string;
+  BackButton: {
+    isVisible: boolean;
+    show: () => void;
+    hide: () => void;
+    onClick: (callback: () => void) => void;
+    offClick: (callback: () => void) => void;
+  };
+  MainButton: {
+    text: string;
+    color: string;
+    textColor: string;
+    isVisible: boolean;
+    isActive: boolean;
+    isProgressVisible: boolean;
+    setText: (text: string) => void;
+    onClick: (callback: () => void) => void;
+    offClick: (callback: () => void) => void;
+    show: () => void;
+    hide: () => void;
+    enable: () => void;
+    disable: () => void;
+    showProgress: (leaveActive: boolean) => void;
+    hideProgress: () => void;
+    setParams: (params: { text?: string; color?: string; text_color?: string; is_active?: boolean; is_visible?: boolean }) => void;
+  };
+  setHeaderColor: (color: string) => void;
+  setBackgroundColor: (color: string) => void;
+  enableClosingConfirmation: () => void;
+  disableClosingConfirmation: () => void;
+  isVersionAtLeast: (version: string) => boolean;
 }
 
 // Declare global window type
@@ -43,8 +77,35 @@ declare global {
     Telegram?: {
       WebApp?: TelegramWebApp;
     };
+    TelegramWebAppReady?: boolean;
+    TelegramWebAppInitData?: string;
   }
 }
+
+// Safe localStorage access
+const safeStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // Ignore
+    }
+  },
+  removeItem: (key: string): void => {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // Ignore
+    }
+  },
+};
 
 export function useTelegram() {
   const [user, setUser] = useState<TelegramUser | null>(null);
@@ -53,101 +114,104 @@ export function useTelegram() {
   const [initData, setInitData] = useState("");
   const [startParam, setStartParam] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  const [webApp, setWebApp] = useState<TelegramWebApp | null>(null);
+
+  const initAttempted = useRef(false);
 
   useEffect(() => {
-    let isMounted = true;
-    let checkInterval: ReturnType<typeof setInterval> | null = null;
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-    
+    // Prevent double initialization in React StrictMode
+    if (initAttempted.current) return;
+    initAttempted.current = true;
+
     const initializeTelegram = () => {
       try {
         const tg = window.Telegram?.WebApp;
 
         if (!tg) {
           // Browser / preview mode
-          console.log('Telegram WebApp not detected - running in browser mode');
-          if (isMounted) {
-            setIsTelegram(false);
-            setIsReady(true);
-          }
+          console.log('[useTelegram] Telegram WebApp not detected - running in browser mode');
+          setIsTelegram(false);
+          setIsReady(true);
           return;
         }
 
-        console.log('Telegram WebApp detected:', {
+        console.log('[useTelegram] Telegram WebApp detected:', {
           version: tg.version,
           platform: tg.platform,
           initDataLength: tg.initData?.length || 0,
           hasUser: !!tg.initDataUnsafe?.user,
+          webAppReady: window.TelegramWebAppReady,
         });
 
-        // Call ready and expand
-        try {
-          tg.ready();
-          tg.expand();
-          console.log('Telegram WebApp ready() and expand() called successfully');
-        } catch (e) {
-          console.warn('Error calling Telegram ready/expand:', e);
-        }
+        // Store WebApp instance
+        setWebApp(tg);
 
-        // Extract user data and init data
+        // Use pre-initialized data if available, otherwise use current
+        const rawInitData = window.TelegramWebAppInitData ?? tg.initData ?? "";
         const userData = tg.initDataUnsafe?.user ?? null;
-        const rawInitData = tg.initData || "";
         const startParamData = tg.initDataUnsafe?.start_param;
 
-        console.log('Telegram user data:', userData ? JSON.stringify({
-          id: userData.id,
-          username: userData.username,
-          first_name: userData.first_name,
-        }) : 'No user data in initDataUnsafe');
-        
-        console.log('initData value:', rawInitData ? `Length: ${rawInitData.length}, First 100 chars: ${rawInitData.substring(0, 100)}` : 'EMPTY - initData is empty!');
+        console.log('[useTelegram] Extracted data:', {
+          initDataLength: rawInitData.length,
+          hasUser: !!userData,
+          userId: userData?.id,
+          username: userData?.username,
+          startParam: startParamData,
+        });
 
-        if (isMounted) {
-          setUser(userData);
-          setInitData(rawInitData);
-          setStartParam(startParamData);
-          setIsTelegram(true);
-          setIsReady(true);
-          setError(null);
+        // Validate initData - must have content for Telegram auth
+        if (!rawInitData || rawInitData.length < 10) {
+          console.warn('[useTelegram] Warning: initData seems too short or empty');
         }
+
+        setUser(userData);
+        setInitData(rawInitData);
+        setStartParam(startParamData);
+        setIsTelegram(true);
+        setIsReady(true);
+        setError(null);
+
+        // Store referral code if present
+        if (startParamData) {
+          safeStorage.setItem('streakfarm_ref_code', startParamData);
+          console.log('[useTelegram] Stored referral code:', startParamData);
+        }
+
       } catch (err: any) {
-        console.error('Error initializing Telegram WebApp:', err);
-        if (isMounted) {
-          setError('Failed to initialize Telegram WebApp: ' + err.message);
-          setIsTelegram(false);
-          setIsReady(true);
-        }
+        console.error('[useTelegram] Error initializing Telegram WebApp:', err);
+        setError('Failed to initialize Telegram WebApp: ' + err.message);
+        setIsTelegram(false);
+        setIsReady(true);
       }
     };
 
-    // Check if Telegram WebApp is already available
-    if (window.Telegram?.WebApp) {
+    // Check if already initialized by pre-init script
+    if (window.TelegramWebAppReady !== undefined) {
+      console.log('[useTelegram] Using pre-initialized WebApp state');
+      initializeTelegram();
+    } else if (window.Telegram?.WebApp) {
+      console.log('[useTelegram] WebApp available, initializing immediately');
       initializeTelegram();
     } else {
-      // Wait a bit for Telegram to load
-      checkInterval = setInterval(() => {
-        if (window.Telegram?.WebApp) {
-          if (checkInterval) clearInterval(checkInterval);
-          initializeTelegram();
-        }
-      }, 100);
+      // Wait for Telegram to load with timeout
+      console.log('[useTelegram] Waiting for Telegram WebApp to load...');
+      let checkCount = 0;
+      const maxChecks = 50; // 5 seconds total (100ms * 50)
 
-      // Timeout after 3 seconds
-      timeout = setTimeout(() => {
-        if (checkInterval) clearInterval(checkInterval);
-        if (!window.Telegram?.WebApp && isMounted) {
-          console.log('Telegram WebApp not loaded within timeout - assuming browser mode');
+      const checkInterval = setInterval(() => {
+        checkCount++;
+        if (window.Telegram?.WebApp) {
+          clearInterval(checkInterval);
+          console.log('[useTelegram] WebApp found after', checkCount, 'checks');
+          initializeTelegram();
+        } else if (checkCount >= maxChecks) {
+          clearInterval(checkInterval);
+          console.log('[useTelegram] WebApp not loaded within timeout - assuming browser mode');
           setIsTelegram(false);
           setIsReady(true);
         }
-      }, 3000);
+      }, 100);
     }
-
-    return () => {
-      isMounted = false;
-      if (checkInterval) clearInterval(checkInterval);
-      if (timeout) clearTimeout(timeout);
-    };
   }, []);
 
   const hapticFeedback = useCallback(
@@ -163,7 +227,7 @@ export function useTelegram() {
       try {
         const tg = window.Telegram?.WebApp;
         if (!tg?.HapticFeedback) {
-          console.log('Haptic feedback not available');
+          console.log('[useTelegram] Haptic feedback not available');
           return;
         }
 
@@ -173,27 +237,71 @@ export function useTelegram() {
           tg.HapticFeedback.impactOccurred(type);
         }
       } catch (e) {
-        console.warn('Haptic feedback error:', e);
+        console.warn('[useTelegram] Haptic feedback error:', e);
       }
     },
     []
   );
 
+  const showMainButton = useCallback((text: string, onClick: () => void, color?: string) => {
+    try {
+      const tg = window.Telegram?.WebApp;
+      if (!tg?.MainButton) return;
+
+      tg.MainButton.setText(text);
+      if (color) {
+        tg.MainButton.setParams({ color });
+      }
+      tg.MainButton.onClick(onClick);
+      tg.MainButton.show();
+    } catch (e) {
+      console.warn('[useTelegram] MainButton error:', e);
+    }
+  }, []);
+
+  const hideMainButton = useCallback(() => {
+    try {
+      const tg = window.Telegram?.WebApp;
+      if (!tg?.MainButton) return;
+      tg.MainButton.hide();
+    } catch (e) {
+      console.warn('[useTelegram] Hide MainButton error:', e);
+    }
+  }, []);
+
+  const setMainButtonLoading = useCallback((loading: boolean) => {
+    try {
+      const tg = window.Telegram?.WebApp;
+      if (!tg?.MainButton) return;
+
+      if (loading) {
+        tg.MainButton.showProgress(true);
+        tg.MainButton.disable();
+      } else {
+        tg.MainButton.hideProgress();
+        tg.MainButton.enable();
+      }
+    } catch (e) {
+      console.warn('[useTelegram] MainButton loading error:', e);
+    }
+  }, []);
+
   const shareRef = useCallback((refCode: string) => {
     try {
       const tg = window.Telegram?.WebApp;
       if (!tg) {
-        console.log('Telegram not available for sharing');
-        // Fallback: copy to clipboard or show message
+        console.log('[useTelegram] Telegram not available for sharing');
+        // Fallback: copy to clipboard
+        navigator.clipboard.writeText(`https://t.me/StreakFarmBot?start=${refCode}`);
         return;
       }
 
       const url = `https://t.me/StreakFarmBot?start=${refCode}`;
       tg.openTelegramLink(
-        `https://t.me/share/url?url=${encodeURIComponent(url)}`
+        `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent('Join me on StreakFarm and earn rewards! 🔥')}`
       );
     } catch (e) {
-      console.error('Error sharing referral:', e);
+      console.error('[useTelegram] Error sharing referral:', e);
     }
   }, []);
 
@@ -201,14 +309,14 @@ export function useTelegram() {
     try {
       const tg = window.Telegram?.WebApp;
       if (!tg) {
-        console.log('Telegram not available, opening in new tab');
+        console.log('[useTelegram] Telegram not available, opening in new tab');
         window.open(url, '_blank');
         return;
       }
 
       tg.openTelegramLink(url);
     } catch (e) {
-      console.error('Error opening Telegram link:', e);
+      console.error('[useTelegram] Error opening Telegram link:', e);
       window.open(url, '_blank');
     }
   }, []);
@@ -220,7 +328,29 @@ export function useTelegram() {
         tg.close();
       }
     } catch (e) {
-      console.error('Error closing WebApp:', e);
+      console.error('[useTelegram] Error closing WebApp:', e);
+    }
+  }, []);
+
+  const showBackButton = useCallback((onClick: () => void) => {
+    try {
+      const tg = window.Telegram?.WebApp;
+      if (!tg?.BackButton) return;
+
+      tg.BackButton.onClick(onClick);
+      tg.BackButton.show();
+    } catch (e) {
+      console.warn('[useTelegram] BackButton error:', e);
+    }
+  }, []);
+
+  const hideBackButton = useCallback(() => {
+    try {
+      const tg = window.Telegram?.WebApp;
+      if (!tg?.BackButton) return;
+      tg.BackButton.hide();
+    } catch (e) {
+      console.warn('[useTelegram] Hide BackButton error:', e);
     }
   }, []);
 
@@ -231,9 +361,15 @@ export function useTelegram() {
     initData,
     startParam,
     error,
+    webApp,
     hapticFeedback,
     shareRef,
     openTelegramLink,
     closeWebApp,
+    showMainButton,
+    hideMainButton,
+    setMainButtonLoading,
+    showBackButton,
+    hideBackButton,
   };
 }

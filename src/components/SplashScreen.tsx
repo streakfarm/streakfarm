@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { useTelegram } from '@/hooks/useTelegram';
 
 interface SplashScreenProps {
   showTelegramPrompt?: boolean;
@@ -7,37 +8,61 @@ interface SplashScreenProps {
 }
 
 export function SplashScreen({ showTelegramPrompt = false, error, onRetry }: SplashScreenProps) {
+  const { isTelegram, initData } = useTelegram();
+
   // Error state
   if (error) {
     return (
-      <div className="fixed inset-0 bg-background flex items-center justify-center z-50">
-        <motion.div 
-          className="flex flex-col items-center gap-6 px-8 text-center"
+      <div className="fixed inset-0 bg-background flex items-center justify-center z-50 p-4">
+        <motion.div
+          className="flex flex-col items-center gap-6 text-center max-w-sm"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
         >
           <motion.div
-            className="w-24 h-24 rounded-3xl bg-gradient-to-br from-destructive/20 to-destructive/10 flex items-center justify-center border border-destructive/30"
+            className="w-20 h-20 rounded-2xl bg-gradient-to-br from-destructive/20 to-destructive/10 flex items-center justify-center border border-destructive/30"
           >
-            <span className="text-5xl">⚠️</span>
+            <span className="text-4xl">⚠️</span>
           </motion.div>
-          
+
           <div>
-            <h1 className="text-2xl font-bold mb-2 text-destructive">Connection Error</h1>
-            <p className="text-muted-foreground text-sm max-w-xs">
+            <h1 className="text-xl font-bold mb-2 text-destructive">Authentication Error</h1>
+            <p className="text-muted-foreground text-sm">
               {error}
             </p>
           </div>
 
+          {/* Debug info for developers */}
+          {isTelegram && (
+            <div className="text-xs text-muted-foreground bg-muted p-3 rounded-lg w-full">
+              <div>Telegram: Connected</div>
+              <div>InitData: {initData ? `${initData.length} chars` : 'Missing'}</div>
+            </div>
+          )}
+
           {onRetry && (
             <motion.button
               onClick={onRetry}
-              className="mt-4 px-8 py-3 rounded-xl bg-gradient-to-r from-primary to-accent text-white font-semibold"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+              className="mt-2 px-6 py-3 rounded-xl bg-gradient-to-r from-primary to-accent text-white font-semibold w-full"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
             >
               Try Again
             </motion.button>
+          )}
+
+          {!isTelegram && (
+            <motion.a
+              href="https://t.me/StreakFarmBot"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-semibold flex items-center justify-center gap-2 w-full"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <span className="text-lg">📱</span>
+              Open in Telegram
+            </motion.a>
           )}
         </motion.div>
       </div>
@@ -46,15 +71,15 @@ export function SplashScreen({ showTelegramPrompt = false, error, onRetry }: Spl
 
   if (showTelegramPrompt) {
     return (
-      <div className="fixed inset-0 bg-background flex items-center justify-center z-50">
-        <motion.div 
-          className="flex flex-col items-center gap-6 px-8 text-center"
+      <div className="fixed inset-0 bg-background flex items-center justify-center z-50 p-4">
+        <motion.div
+          className="flex flex-col items-center gap-6 text-center max-w-sm"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
         >
           <motion.div
             className="w-24 h-24 rounded-3xl bg-gradient-to-br from-primary via-accent to-primary flex items-center justify-center"
-            animate={{ 
+            animate={{
               boxShadow: [
                 '0 0 30px rgba(255,107,53,0.3)',
                 '0 0 60px rgba(255,107,53,0.5)',
@@ -65,25 +90,31 @@ export function SplashScreen({ showTelegramPrompt = false, error, onRetry }: Spl
           >
             <span className="text-5xl">🔥</span>
           </motion.div>
-          
+
           <div>
             <h1 className="text-2xl font-bold mb-2">StreakFarm</h1>
             <p className="text-muted-foreground text-sm">
-              Open in Telegram to continue
+              Open in Telegram to start earning rewards
             </p>
           </div>
 
-          <motion.a
-            href="https://t.me/StreakFarmBot"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-4 px-8 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-semibold flex items-center gap-2"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <span className="text-xl">📱</span>
-            Open @StreakFarmBot
-          </motion.a>
+          <div className="space-y-3 w-full">
+            <motion.a
+              href="https://t.me/StreakFarmBot"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-8 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-semibold flex items-center justify-center gap-2"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <span className="text-xl">📱</span>
+              Open @StreakFarmBot
+            </motion.a>
+
+            <p className="text-xs text-muted-foreground">
+              This app works best inside Telegram
+            </p>
+          </div>
         </motion.div>
       </div>
     );
@@ -92,7 +123,7 @@ export function SplashScreen({ showTelegramPrompt = false, error, onRetry }: Spl
   // Animated splash screen during loading
   return (
     <div className="fixed inset-0 bg-background flex items-center justify-center z-50">
-      <motion.div 
+      <motion.div
         className="flex flex-col items-center gap-6"
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -100,18 +131,18 @@ export function SplashScreen({ showTelegramPrompt = false, error, onRetry }: Spl
         {/* Animated logo */}
         <motion.div
           className="relative"
-          animate={{ 
+          animate={{
             scale: [1, 1.05, 1],
           }}
-          transition={{ 
+          transition={{
             duration: 2,
             repeat: Infinity,
             ease: "easeInOut"
           }}
         >
           <motion.div
-            className="w-28 h-28 rounded-3xl bg-gradient-to-br from-primary via-accent to-primary flex items-center justify-center"
-            animate={{ 
+            className="w-24 h-24 rounded-2xl bg-gradient-to-br from-primary via-accent to-primary flex items-center justify-center"
+            animate={{
               boxShadow: [
                 '0 0 30px rgba(255,107,53,0.3)',
                 '0 0 60px rgba(255,107,53,0.5)',
@@ -120,12 +151,12 @@ export function SplashScreen({ showTelegramPrompt = false, error, onRetry }: Spl
             }}
             transition={{ duration: 2, repeat: Infinity }}
           >
-            <motion.span 
-              className="text-6xl"
-              animate={{ 
+            <motion.span
+              className="text-5xl"
+              animate={{
                 rotate: [0, 5, -5, 0],
               }}
-              transition={{ 
+              transition={{
                 duration: 1.5,
                 repeat: Infinity,
                 ease: "easeInOut"
@@ -134,9 +165,9 @@ export function SplashScreen({ showTelegramPrompt = false, error, onRetry }: Spl
               🔥
             </motion.span>
           </motion.div>
-          
+
           {/* Floating particles */}
-          {[...Array(6)].map((_, i) => (
+          {[...Array(5)].map((_, i) => (
             <motion.div
               key={i}
               className="absolute w-2 h-2 rounded-full bg-primary/60"
@@ -145,7 +176,7 @@ export function SplashScreen({ showTelegramPrompt = false, error, onRetry }: Spl
                 bottom: '100%',
               }}
               animate={{
-                y: [-20, -60],
+                y: [-20, -50],
                 x: [0, (i % 2 === 0 ? 1 : -1) * (10 + i * 5)],
                 opacity: [0.8, 0],
                 scale: [1, 0.5],
@@ -167,13 +198,14 @@ export function SplashScreen({ showTelegramPrompt = false, error, onRetry }: Spl
           transition={{ delay: 0.3 }}
           className="text-center"
         >
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
             StreakFarm
           </h1>
+          <p className="text-xs text-muted-foreground mt-1">Loading...</p>
         </motion.div>
 
         {/* Loading dots */}
-        <div className="flex gap-1.5 mt-4">
+        <div className="flex gap-1.5 mt-2">
           {[0, 1, 2].map((i) => (
             <motion.div
               key={i}

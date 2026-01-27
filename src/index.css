@@ -99,9 +99,40 @@
     @apply border-border;
   }
 
+  html {
+    /* Telegram WebApp specific fixes */
+    height: 100%;
+    overflow-x: hidden;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    /* Telegram WebApp viewport fixes */
+    min-height: 100vh;
+    min-height: 100dvh;
+    min-height: -webkit-fill-available;
+    overflow-x: hidden;
+    /* Prevent pull-to-refresh in Telegram */
+    overscroll-behavior-y: none;
+    /* Ensure proper rendering in Telegram WebView */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Telegram WebApp specific styles */
+  .telegram-webapp body {
+    /* Use Telegram's viewport height */
+    height: var(--tg-viewport-height, 100vh);
+    max-height: var(--tg-viewport-stable-height, 100vh);
+  }
+
+  #root {
+    /* Ensure root takes full height */
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
   }
 
   /* Custom scrollbar for gaming feel */
