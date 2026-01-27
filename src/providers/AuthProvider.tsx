@@ -37,16 +37,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
-  const hasAttemptedTelegramLogin = useRef(false);
+  const isAuthInProgress = useRef(false);
   const { initData, isReady, isTelegram, hapticFeedback } = useTelegram();
   const queryClient = useQueryClient();
 
   // Handle Auth State Changes
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.id);
-        setSession(session);
+      (event, currentSession) => {
+        console.log('Auth state changed:', event, currentSession?.user?.id);
+        setSession(currentSession);
         
         if (event === 'SIGNED_IN') {
           queryClient.invalidateQueries();
@@ -60,9 +60,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     );
 
     // Initial session check
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) {
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      setSession(currentSession);
+      if (currentSession) {
         setIsLoading(false);
       }
     });
@@ -71,13 +71,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [queryClient]);
 
   const attemptTelegramLogin = useCallback(async () => {
-    if (!isReady) return;
+    // Prevent multiple concurrent attempts or attempts if already logged in
+    if (!isReady || session || isAuthInProgress.current) return;
     
-    if (session) {
-      setIsLoading(false);
-      return;
-    }
-
     // Official Flow: Must have initData
     if (!initData || !initData.trim()) {
       console.log('No Telegram data available. Auto-login skipped.');
@@ -86,6 +82,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
 
     console.log('Official Flow: Starting Telegram auto-login...');
+    isAuthInProgress.current = true;
     setAuthError(null);
     setIsLoading(true);
 
@@ -120,7 +117,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         hapticFeedback('success');
         toast.success('Successfully logged in via Telegram!');
       } else if (result.session) {
-        // Handle case where result has a session object directly
         const { error } = await supabase.auth.setSession(result.session);
         if (error) throw error;
         hapticFeedback('success');
@@ -130,31 +126,35 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch (error: any) {
       console.error('Telegram auth error:', error.message);
       setAuthError(error.message);
-      toast.error(`Auth Error: ${error.message}`);
+      // Only show toast if it's not an abort/cancellation
+      if (error.message !== 'Authentication failed') {
+        toast.error(`Auth Error: ${error.message}`);
+      }
     } finally {
       setIsLoading(false);
+      isAuthInProgress.current = false;
     }
   }, [isReady, initData, session, hapticFeedback]);
 
   // Auto-trigger login when Telegram is ready
   useEffect(() => {
-    if (isReady && isTelegram && !session && !hasAttemptedTelegramLogin.current) {
-      hasAttemptedTelegramLogin.current = true;
+    // Only attempt if we are in Telegram, ready, and NOT already logged in
+    if (isReady && isTelegram && !session && !isAuthInProgress.current) {
       attemptTelegramLogin();
-    } else if (isReady && !isTelegram) {
+    } else if (isReady && !isTelegram && !session) {
       setIsLoading(false);
     }
   }, [isReady, isTelegram, session, attemptTelegramLogin]);
 
   const retryAuth = useCallback(() => {
-    hasAttemptedTelegramLogin.current = false;
+    isAuthInProgress.current = false;
     attemptTelegramLogin();
   }, [attemptTelegramLogin]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
-    hasAttemptedTelegramLogin.current = false;
+    isAuthInProgress.current = false;
     queryClient.clear();
   };
 
