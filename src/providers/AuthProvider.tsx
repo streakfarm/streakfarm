@@ -168,12 +168,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch (error: any) {
       console.error('Telegram auth error:', error.message);
       setAuthError(error.message);
+      setIsLoading(false);
       // Only show toast if it's not an abort/cancellation
       if (error.message !== 'Authentication failed') {
         toast.error(`Auth Error: ${error.message}`);
       }
     } finally {
-      setIsLoading(false);
+      // Don't set isLoading(false) here on success
+      // onAuthStateChange will handle it when SIGNED_IN event fires
       isAuthInProgress.current = false;
     }
   }, [isReady, initData, session, hapticFeedback]);
@@ -184,9 +186,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (isReady && isTelegram && !session && !isAuthInProgress.current) {
       attemptTelegramLogin();
     } else if (isReady && !isTelegram && !session) {
+      // Not in Telegram and no session - show the "Open in Telegram" prompt
+      setIsLoading(false);
+    } else if (isReady && isTelegram && !session && authError) {
+      // In Telegram but auth failed - stop loading to show error
       setIsLoading(false);
     }
-  }, [isReady, isTelegram, session, attemptTelegramLogin]);
+  }, [isReady, isTelegram, session, authError, attemptTelegramLogin]);
 
   // Safety timeout - if loading for more than 10 seconds, stop loading
   useEffect(() => {
