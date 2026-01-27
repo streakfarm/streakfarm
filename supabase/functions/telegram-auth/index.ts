@@ -14,6 +14,7 @@ interface TelegramUser {
   username?: string;
   language_code?: string;
   is_premium?: boolean;
+  photo_url?: string;
 }
 
 async function validateTelegramData(initData: string, botToken: string): Promise<TelegramUser | null> {
@@ -119,20 +120,27 @@ serve(async (req) => {
       user = newUser;
     }
 
-    // 2. Ensure user exists in 'profiles' table (or whatever your user table is named)
-    // Most templates use a 'profiles' or 'users' table in the public schema
+    // 2. Update the auto-created profile with Telegram user data
+    // Profile is auto-created by handle_new_user() trigger on auth.user creation
+    const fullName = `${tgUser.first_name} ${tgUser.last_name || ""}`.trim();
+    
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
-      .upsert({
-        id: user.id,
+      .update({
+        telegram_id: tgUser.id,
         username: tgUser.username || `user_${tgUser.id}`,
-        full_name: `${tgUser.first_name} ${tgUser.last_name || ""}`.trim(),
-        avatar_url: null,
+        first_name: fullName,
+        avatar_url: tgUser.photo_url || null,
+        language_code: tgUser.language_code || 'en',
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'id' });
+      })
+      .eq('user_id', user.id);
 
     if (profileError) {
-      console.warn("DEBUG: Profile upsert error (might not have a profiles table):", profileError.message);
+      console.warn("DEBUG: Profile update error:", profileError.message);
+      // Don't throw - auth still succeeded, profile update is non-critical
+    } else {
+      console.log("DEBUG: Profile updated successfully for user:", user.id);
     }
 
     // 3. Sign in to get a session

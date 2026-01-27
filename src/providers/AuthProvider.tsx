@@ -87,26 +87,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setIsLoading(true);
 
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-auth`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: JSON.stringify({ initData }),
-        }
-      );
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-auth`;
+      console.log('Calling edge function:', functionUrl);
+      
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ initData }),
+      });
 
       const result = await response.json();
+      console.log('Edge function response:', { status: response.status, ok: response.ok });
 
       if (!response.ok) {
-        throw new Error(result.error || 'Authentication failed');
+        throw new Error(result.error || `Authentication failed (${response.status})`);
       }
 
       // If we got session tokens back
       if (result.access_token && result.refresh_token) {
+        console.log('Setting session from tokens...');
         const { error } = await supabase.auth.setSession({
           access_token: result.access_token,
           refresh_token: result.refresh_token,
@@ -116,11 +118,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
         
         hapticFeedback('success');
         toast.success('Successfully logged in via Telegram!');
-      } else if (result.session) {
-        const { error } = await supabase.auth.setSession(result.session);
+      } else if (result.session?.access_token && result.session?.refresh_token) {
+        console.log('Setting session from session object...');
+        const { error } = await supabase.auth.setSession({
+          access_token: result.session.access_token,
+          refresh_token: result.session.refresh_token,
+        });
         if (error) throw error;
         hapticFeedback('success');
       } else {
+        console.error('Invalid response structure:', Object.keys(result));
         throw new Error('Invalid authentication response from server');
       }
     } catch (error: any) {
@@ -145,6 +152,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setIsLoading(false);
     }
   }, [isReady, isTelegram, session, attemptTelegramLogin]);
+
+  // Safety timeout - if loading for more than 10 seconds, stop loading
+  useEffect(() => {
+    if (isLoading) {
+      const timeout = setTimeout(() => {
+        if (isLoading && !session) {
+          console.log('Auth loading timeout - forcing loading to false');
+          setIsLoading(false);
+          if (!authError) {
+            setAuthError('Authentication timed out. Please try again.');
+          }
+        }
+      }, 10000);
+      return () => clearTimeout(timeout);
+    }
+  }, [isLoading, session, authError]);
 
   const retryAuth = useCallback(() => {
     isAuthInProgress.current = false;

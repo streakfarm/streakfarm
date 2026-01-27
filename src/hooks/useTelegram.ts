@@ -56,6 +56,8 @@ export function useTelegram() {
 
   useEffect(() => {
     let isMounted = true;
+    let checkInterval: ReturnType<typeof setInterval> | null = null;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
     
     const initializeTelegram = () => {
       try {
@@ -75,6 +77,7 @@ export function useTelegram() {
           version: tg.version,
           platform: tg.platform,
           initDataLength: tg.initData?.length || 0,
+          hasUser: !!tg.initDataUnsafe?.user,
         });
 
         // Call ready and expand
@@ -95,7 +98,7 @@ export function useTelegram() {
           id: userData.id,
           username: userData.username,
           first_name: userData.first_name,
-        } : 'No user data');
+        } : 'No user data in initDataUnsafe');
 
         if (isMounted) {
           setUser(userData);
@@ -105,10 +108,10 @@ export function useTelegram() {
           setIsReady(true);
           setError(null);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error initializing Telegram WebApp:', err);
         if (isMounted) {
-          setError('Failed to initialize Telegram WebApp');
+          setError('Failed to initialize Telegram WebApp: ' + err.message);
           setIsTelegram(false);
           setIsReady(true);
         }
@@ -120,31 +123,28 @@ export function useTelegram() {
       initializeTelegram();
     } else {
       // Wait a bit for Telegram to load
-      const checkInterval = setInterval(() => {
+      checkInterval = setInterval(() => {
         if (window.Telegram?.WebApp) {
-          clearInterval(checkInterval);
+          if (checkInterval) clearInterval(checkInterval);
           initializeTelegram();
         }
       }, 100);
 
       // Timeout after 3 seconds
-      const timeout = setTimeout(() => {
-        clearInterval(checkInterval);
+      timeout = setTimeout(() => {
+        if (checkInterval) clearInterval(checkInterval);
         if (!window.Telegram?.WebApp && isMounted) {
           console.log('Telegram WebApp not loaded within timeout - assuming browser mode');
           setIsTelegram(false);
           setIsReady(true);
         }
       }, 3000);
-
-      return () => {
-        clearInterval(checkInterval);
-        clearTimeout(timeout);
-      };
     }
 
     return () => {
       isMounted = false;
+      if (checkInterval) clearInterval(checkInterval);
+      if (timeout) clearTimeout(timeout);
     };
   }, []);
 
