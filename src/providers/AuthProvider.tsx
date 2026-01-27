@@ -72,35 +72,70 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const attemptTelegramLogin = useCallback(async () => {
     // Prevent multiple concurrent attempts or attempts if already logged in
-    if (!isReady || session || isAuthInProgress.current) return;
+    if (!isReady || session || isAuthInProgress.current) {
+      console.log('Skipping auth attempt:', { isReady, hasSession: !!session, inProgress: isAuthInProgress.current });
+      return;
+    }
     
     // Official Flow: Must have initData
     if (!initData || !initData.trim()) {
-      console.log('No Telegram data available. Auto-login skipped.');
+      console.log('No Telegram initData available. Auto-login skipped.');
+      console.log('initData value:', initData);
       setIsLoading(false);
       return;
     }
 
     console.log('Official Flow: Starting Telegram auto-login...');
+    console.log('initData length:', initData.length);
+    console.log('initData preview:', initData.substring(0, 200));
     isAuthInProgress.current = true;
     setAuthError(null);
     setIsLoading(true);
 
     try {
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-auth`;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      
+      console.log('Environment check:', { 
+        hasSupabaseUrl: !!supabaseUrl, 
+        hasPublishableKey: !!publishableKey 
+      });
+      
+      if (!supabaseUrl || !publishableKey) {
+        throw new Error('Missing Supabase environment variables');
+      }
+      
+      const functionUrl = `${supabaseUrl}/functions/v1/telegram-auth`;
       console.log('Calling edge function:', functionUrl);
       
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
-        body: JSON.stringify({ initData }),
-      });
+      let response;
+      try {
+        response = await fetch(functionUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${publishableKey}`,
+          },
+          body: JSON.stringify({ initData }),
+        });
+      } catch (fetchError: any) {
+        console.error('Fetch error:', fetchError);
+        throw new Error(`Network error: ${fetchError.message}. Check if edge function is deployed.`);
+      }
 
-      const result = await response.json();
-      console.log('Edge function response:', { status: response.status, ok: response.ok });
+      console.log('Response received:', { status: response.status, statusText: response.statusText });
+      
+      let result;
+      try {
+        result = await response.json();
+      } catch (parseError) {
+        console.error('Failed to parse response:', parseError);
+        const text = await response.text();
+        console.error('Raw response:', text);
+        throw new Error(`Invalid response from server: ${text.substring(0, 100)}`);
+      }
+      
+      console.log('Edge function response:', { status: response.status, ok: response.ok, resultKeys: Object.keys(result) });
 
       if (!response.ok) {
         throw new Error(result.error || `Authentication failed (${response.status})`);

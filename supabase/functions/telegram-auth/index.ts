@@ -68,15 +68,44 @@ async function validateTelegramData(initData: string, botToken: string): Promise
 }
 
 serve(async (req) => {
+  console.log(`DEBUG: Request received - ${req.method} ${req.url}`);
+  
   if (req.method === "OPTIONS") {
+    console.log("DEBUG: Handling CORS preflight");
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { initData } = await req.json();
+    let body;
+    try {
+      body = await req.json();
+    } catch (e) {
+      console.error("DEBUG: Failed to parse request body:", e.message);
+      return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    
+    const { initData } = body;
+    console.log("DEBUG: initData received:", initData ? `Length: ${initData.length}` : "EMPTY");
+    
+    if (!initData || !initData.trim()) {
+      return new Response(JSON.stringify({ error: "Missing initData" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    
     const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    
+    console.log("DEBUG: Environment check:", {
+      hasBotToken: !!botToken,
+      hasSupabaseUrl: !!supabaseUrl,
+      hasServiceRoleKey: !!serviceRoleKey,
+    });
     
     if (!botToken || !supabaseUrl || !serviceRoleKey) {
       throw new Error("Missing environment variables");

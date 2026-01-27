@@ -94,11 +94,13 @@ export function useTelegram() {
         const rawInitData = tg.initData || "";
         const startParamData = tg.initDataUnsafe?.start_param;
 
-        console.log('Telegram user data:', userData ? {
+        console.log('Telegram user data:', userData ? JSON.stringify({
           id: userData.id,
           username: userData.username,
           first_name: userData.first_name,
-        } : 'No user data in initDataUnsafe');
+        }) : 'No user data in initDataUnsafe');
+        
+        console.log('initData value:', rawInitData ? `Length: ${rawInitData.length}, First 100 chars: ${rawInitData.substring(0, 100)}` : 'EMPTY - initData is empty!');
 
         if (isMounted) {
           setUser(userData);
