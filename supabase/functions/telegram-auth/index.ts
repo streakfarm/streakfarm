@@ -59,22 +59,30 @@ const secretKey = createHmac("sha256", botToken).update("WebAppData").digest();
 }
 
 Deno.serve(async (req) => {
-  console.log("DEBUG: telegram-auth function called");
-  console.log("DEBUG: Method:", req.method);
-  console.log("DEBUG: Headers:", JSON.stringify(Object.fromEntries(req.headers.entries())));
-  
+  // 1. Handle CORS Preflight immediately
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
+  console.log("DEBUG: telegram-auth function called");
+  console.log("DEBUG: Method:", req.method);
+  
   try {
+    // 2. Validate JSON body safely
     let body;
     try {
-      body = await req.json();
-      console.log("DEBUG: Body received successfully");
+      const text = await req.text();
+      if (!text) {
+        throw new Error("Empty body");
+      }
+      body = JSON.parse(text);
+      console.log("DEBUG: Body parsed successfully");
     } catch (e) {
-      console.error("DEBUG: Failed to parse JSON body:", e);
-      return new Response(JSON.stringify({ error: "Invalid JSON body" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      console.error("DEBUG: Failed to parse JSON body:", e.message);
+      return new Response(
+        JSON.stringify({ error: "Invalid JSON body", detail: e.message }), 
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const { initData, startParam } = body;
