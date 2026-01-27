@@ -8,29 +8,12 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // CORS
   if (req.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: corsHeaders });
   }
 
-  console.log("🔥 FUNCTION STARTED");
-  
   try {
-    const bodyText = await req.text();
-    console.log("📦 Raw body:", bodyText.substring(0, 300));
-    
-    let body;
-    try {
-      body = JSON.parse(bodyText);
-    } catch (e) {
-      console.error("❌ JSON parse error:", e);
-      return new Response(
-        JSON.stringify({ error: "Invalid JSON", raw: bodyText.substring(0, 100) }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const { initData, startParam } = body;
+    const { initData, startParam } = await req.json();
     
     if (!initData) {
       return new Response(
@@ -41,8 +24,6 @@ serve(async (req) => {
 
     const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
     
-    console.log("🔑 Bot token exists:", !!botToken);
-    
     if (!botToken) {
       return new Response(
         JSON.stringify({ error: "Bot token not configured" }),
@@ -50,113 +31,97 @@ serve(async (req) => {
       );
     }
 
-    // 🔥 TEMPORARY: Skip validation for testing
-    // Agar validation fail ho raha hai, toh temporarily yeh use karo:
-    const SKIP_VALIDATION = false; // <-- Isko true karo testing ke liye
+    // Parse initData
+    const params = new URLSearchParams(initData);
+    const hash = params.get("hash");
+    const authDate = params.get("auth_date");
+    const userStr = params.get("user");
+    const queryId = params.get("query_id");
     
-    let telegramUser;
-    
-    if (SKIP_VALIDATION) {
-      console.log("⚠️ SKIPPING VALIDATION - TEST MODE");
-      // Parse user from initData without validation
-      const params = new URLSearchParams(initData);
-      const userStr = params.get("user");
-      telegramUser = userStr ? JSON.parse(userStr) : { id: 123456, first_name: "Test" };
-    } else {
-      // 🔐 Proper validation
-      const encoder = new TextEncoder();
-      
-      // Parse initData
-      const params = new URLSearchParams(initData);
-      const hash = params.get("hash");
-      
-      if (!hash) {
-        return new Response(
-          JSON.stringify({ error: "No hash in initData" }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      
-      params.delete("hash");
-      
-      // Build data check string (CRITICAL: alphabetically sorted)
-      const keys = Array.from(params.keys()).sort();
-      const dataCheckArr = keys.map(key => `${key}=${params.get(key)}`);
-      const dataCheckString = dataCheckArr.join("\n");
-      
-      console.log("📝 Data string:", dataCheckString.substring(0, 200));
-      console.log("🔐 Received hash:", hash);
-      
-      try {
-        // HMAC-SHA256(botToken, "WebAppData") = secret
-        const botKey = await crypto.subtle.importKey(
-          "raw",
-          encoder.encode(botToken),
-          { name: "HMAC", hash: "SHA-256" },
-          false,
-          ["sign"]
-        );
-        
-        const secretBuffer = await crypto.subtle.sign(
-          "HMAC",
-          botKey,
-          encoder.encode("WebAppData")
-        );
-        
-        const secretKey = await crypto.subtle.importKey(
-          "raw",
-          secretBuffer,
-          { name: "HMAC", hash: "SHA-256" },
-          false,
-          ["sign"]
-        );
-        
-        // HMAC-SHA256(secret, dataCheckString) = hash
-        const sig = await crypto.subtle.sign(
-          "HMAC",
-          secretKey,
-          encoder.encode(dataCheckString)
-        );
-        
-        const calculatedHash = Array.from(new Uint8Array(sig))
-          .map(b => b.toString(16).padStart(2, "0"))
-          .join("");
-        
-        console.log("🧮 Calculated:", calculatedHash);
-        console.log("✅ Match:", calculatedHash === hash);
-        
-        if (calculatedHash !== hash) {
-          return new Response(
-            JSON.stringify({ 
-              error: "Invalid hash", 
-              debug: "Hash mismatch" 
-            }),
-            { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-        
-        const userStr = params.get("user");
-        if (!userStr) throw new Error("No user data");
-        telegramUser = JSON.parse(userStr);
-        
-      } catch (cryptoErr) {
-        console.error("❌ Crypto error:", cryptoErr);
-        return new Response(
-          JSON.stringify({ error: "Validation error", details: cryptoErr.message }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+    if (!hash) {
+      return new Response(
+        JSON.stringify({ error: "Missing hash in initData" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    console.log("✅ User validated:", telegramUser.id);
+    // Build data check string (alphabetically sorted)
+    params.delete("hash");
+    const dataCheckArr: string[] = [];
+    params.forEach((value, key) => {
+      dataCheckArr.push(`${key}=${value}`);
+    });
+    dataCheckArr.sort();
+    const dataCheckString = dataCheckArr.join("\n");
+
+    const encoder = new TextEncoder();
     
-    // Rest of your code (Supabase auth)...
+    // HMAC_SHA256(botToken, "WebAppData") = secret
+    const botKey = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(botToken),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    
+    const secret = await crypto.subtle.sign(
+      "HMAC",
+      botKey,
+      encoder.encode("WebAppData")
+    );
+    
+    const secretKey = await crypto.subtle.importKey(
+      "raw",
+      secret,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    
+    // HMAC_SHA256(secret, dataCheckString) = hash
+    const signature = await crypto.subtle.sign(
+      "HMAC",
+      secretKey,
+      encoder.encode(dataCheckString)
+    );
+    
+    const calculatedHash = Array.from(new Uint8Array(signature))
+      .map(b => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    if (calculatedHash !== hash) {
+      console.error("Hash mismatch!");
+      console.error("Calculated:", calculatedHash);
+      console.error("Received:", hash);
+      console.error("Bot token length:", botToken.length);
+      
+      return new Response(
+        JSON.stringify({ 
+          error: "Invalid hash",
+          debug: "Telegram data validation failed. Check bot token."
+        }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!userStr) {
+      return new Response(
+        JSON.stringify({ error: "No user data" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const telegramUser = JSON.parse(userStr);
+    console.log("User validated:", telegramUser.id);
+
+    // Supabase setup
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     
     if (!supabaseUrl || !serviceRoleKey) {
       return new Response(
-        JSON.stringify({ error: "Supabase not configured" }),
+        JSON.stringify({ error: "Server not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -170,35 +135,35 @@ serve(async (req) => {
       .from("profiles")
       .select("id, user_id")
       .eq("telegram_id", telegramUser.id)
-      .single();
+      .maybeSingle();
 
-    let userId, profileId;
+    let userId: string;
+    let profileId: string;
 
     if (existing) {
       userId = existing.user_id;
       profileId = existing.id;
-      console.log("👤 Existing user");
     } else {
-      console.log("➕ Creating user...");
-      const { data: newUser, error: createErr } = await supabase.auth.admin.createUser({
+      // Create auth user
+      const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
-        user_metadata: { 
+        user_metadata: {
           telegram_id: telegramUser.id,
           first_name: telegramUser.first_name,
-          username: telegramUser.username 
-        }
+          username: telegramUser.username,
+        },
       });
 
-      if (createErr || !newUser.user) {
-        console.error("❌ Create error:", createErr);
-        throw new Error("Failed to create user");
+      if (createError || !newUser.user) {
+        throw new Error(createError?.message || "Failed to create user");
       }
-      
+
       userId = newUser.user.id;
-      
-      const { data: profile, error: profileErr } = await supabase
+
+      // Create profile
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .insert({
           user_id: userId,
@@ -206,42 +171,54 @@ serve(async (req) => {
           username: telegramUser.username ?? null,
           first_name: telegramUser.first_name ?? null,
           avatar_url: telegramUser.photo_url ?? null,
-          language_code: telegramUser.language_code ?? "en"
+          language_code: telegramUser.language_code ?? "en",
         })
         .select("id")
         .single();
-        
-      if (profileErr || !profile) throw new Error("Profile creation failed");
+
+      if (profileError || !profile) {
+        throw new Error("Profile creation failed");
+      }
+
       profileId = profile.id;
       
-      // Referral logic...
+      // Leaderboard
+      await supabase.from("leaderboards").insert({ user_id: profileId });
+
+      // Referral
       if (startParam) {
-        const { data: ref } = await supabase.from("profiles").select("id").eq("ref_code", startParam).single();
-        if (ref) {
-          await supabase.from("profiles").update({ referred_by: ref.id }).eq("id", profileId);
+        const { data: ref } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("ref_code", startParam)
+          .maybeSingle();
+
+        if (ref && ref.id !== profileId) {
+          await supabase
+            .from("profiles")
+            .update({ referred_by: ref.id })
+            .eq("id", profileId);
+
           await supabase.from("referrals").insert({
             referrer_id: ref.id,
             referee_id: profileId,
             referrer_bonus: 100,
-            referee_bonus: 50
+            referee_bonus: 50,
           });
         }
       }
     }
 
     // Sign in
-    console.log("🔐 Signing in...");
-    const { data: session, error: signInErr } = await supabase.auth.signInWithPassword({
+    const { data: session, error: signInError } = await supabase.auth.signInWithPassword({
       email,
-      password
+      password,
     });
 
-    if (signInErr || !session.session) {
-      console.error("❌ Sign in error:", signInErr);
+    if (signInError || !session.session) {
       throw new Error("Sign in failed");
     }
 
-    console.log("🎉 SUCCESS");
     return new Response(
       JSON.stringify({
         success: true,
@@ -249,16 +226,17 @@ serve(async (req) => {
         profile_id: profileId,
         telegram_id: telegramUser.id,
         first_name: telegramUser.first_name,
+        username: telegramUser.username,
         access_token: session.session.access_token,
-        refresh_token: session.session.refresh_token
+        refresh_token: session.session.refresh_token,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (err) {
-    console.error("💥 FATAL ERROR:", err);
+    console.error("Error:", err);
     return new Response(
-      JSON.stringify({ error: "Server error", details: err.message }),
+      JSON.stringify({ error: err.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
