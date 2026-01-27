@@ -32,10 +32,16 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+// Maximum number of retry attempts
+const MAX_RETRY_ATTEMPTS = 3;
+// Timeout for auth request (30 seconds)
+const AUTH_TIMEOUT = 30000;
+
 export function AuthProvider({ children }: AuthProviderProps) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const retryCount = useRef(0);
   const hasAttemptedTelegramLogin = useRef(false);
   const { initData, isReady, isTelegram, hapticFeedback } = useTelegram();
   const queryClient = useQueryClient();
@@ -105,30 +111,57 @@ export function AuthProvider({ children }: AuthProviderProps) {
     console.log('Attempting Telegram auto-login with initData length:', initData.length);
     setAuthError(null);
 
+    // Get the Supabase function URL
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    if (!supabaseUrl) {
+      console.error('VITE_SUPABASE_URL is not configured');
+      setAuthError('Server configuration error. Please contact support.');
+      setIsLoading(false);
+      return;
+    }
+
+    const functionUrl = `${supabaseUrl}/functions/v1/telegram-auth`;
+    console.log('Calling Telegram auth function:', functionUrl);
+
     // Add timeout to prevent infinite loading
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), AUTH_TIMEOUT);
 
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-auth`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ initData }),
-          signal: controller.signal,
-        }
-      );
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({ initData }),
+        signal: controller.signal,
+      });
 
       clearTimeout(timeoutId);
-      const result = await response.json();
+      
+      let result;
+      try {
+        result = await response.json();
+      } catch (parseError) {
+        console.error('Failed to parse auth response:', parseError);
+        throw new Error('Invalid response from server');
+      }
+      
       console.log('Telegram auth response:', response.status, result);
 
       if (!response.ok) {
         console.error('Telegram auth failed:', result.error);
-        setAuthError(result.error || 'Authentication failed');
+        
+        // Handle specific error cases
+        if (response.status === 401) {
+          setAuthError('Telegram authentication failed. Please try again.');
+        } else if (response.status === 500) {
+          setAuthError('Server error. Please try again later.');
+        } else {
+          setAuthError(result.error || 'Authentication failed');
+        }
+        
         setIsLoading(false);
         return;
       }
@@ -144,16 +177,40 @@ export function AuthProvider({ children }: AuthProviderProps) {
           console.error('Failed to set session:', error);
           setAuthError('Session error. Please restart the app.');
         } else {
+          console.log('Session set successfully');
           hapticFeedback('success');
+          retryCount.current = 0; // Reset retry count on success
         }
       } else {
-        setAuthError('Invalid auth response');
+        setAuthError('Invalid auth response from server');
       }
     } catch (error: any) {
       clearTimeout(timeoutId);
+      
       if (error.name === 'AbortError') {
         console.error('Telegram auth timeout');
-        setAuthError('Connection timeout. Check your internet.');
+        
+        // Retry logic for timeout
+        if (retryCount.current < MAX_RETRY_ATTEMPTS) {
+          retryCount.current++;
+          console.log(`Retrying auth attempt ${retryCount.current}/${MAX_RETRY_ATTEMPTS}...`);
+          setTimeout(() => attemptTelegramLogin(), 2000 * retryCount.current);
+          return;
+        }
+        
+        setAuthError('Connection timeout. Please check your internet and try again.');
+      } else if (error.message?.includes('fetch') || error.message?.includes('network')) {
+        console.error('Network error:', error);
+        
+        // Retry logic for network errors
+        if (retryCount.current < MAX_RETRY_ATTEMPTS) {
+          retryCount.current++;
+          console.log(`Retrying auth attempt ${retryCount.current}/${MAX_RETRY_ATTEMPTS}...`);
+          setTimeout(() => attemptTelegramLogin(), 2000 * retryCount.current);
+          return;
+        }
+        
+        setAuthError('Network error. Please check your internet connection.');
       } else {
         console.error('Telegram auth error:', error);
         setAuthError('Connection error. Please try again.');
@@ -175,6 +232,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const retryAuth = useCallback(() => {
     hasAttemptedTelegramLogin.current = false;
+    retryCount.current = 0;
     setAuthError(null);
     setIsLoading(true);
     attemptTelegramLogin();
@@ -184,6 +242,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     await supabase.auth.signOut();
     setSession(null);
     hasAttemptedTelegramLogin.current = false;
+    retryCount.current = 0;
     queryClient.clear();
   };
 

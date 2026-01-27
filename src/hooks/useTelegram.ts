@@ -14,6 +14,8 @@ interface TelegramWebApp {
   initDataUnsafe: {
     user?: TelegramUser;
     start_param?: string;
+    auth_date?: number;
+    hash?: string;
   };
   ready: () => void;
   expand: () => void;
@@ -24,6 +26,24 @@ interface TelegramWebApp {
     selectionChanged: () => void;
   };
   openTelegramLink: (url: string) => void;
+  onEvent: (eventType: string, callback: () => void) => void;
+  offEvent: (eventType: string, callback: () => void) => void;
+  version: string;
+  platform: string;
+  colorScheme: string;
+  themeParams: Record<string, string>;
+  isExpanded: boolean;
+  viewportHeight: number;
+  viewportStableHeight: number;
+}
+
+// Declare global window type
+declare global {
+  interface Window {
+    Telegram?: {
+      WebApp?: TelegramWebApp;
+    };
+  }
 }
 
 export function useTelegram() {
@@ -32,50 +52,103 @@ export function useTelegram() {
   const [isReady, setIsReady] = useState(false);
   const [initData, setInitData] = useState("");
   const [startParam, setStartParam] = useState<string | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const tg = (window as any)?.Telegram?.WebApp as TelegramWebApp | undefined;
+    let isMounted = true;
+    
+    const initializeTelegram = () => {
+      try {
+        const tg = window.Telegram?.WebApp;
 
-    if (!tg) {
-      // Browser / preview mode
-      setIsTelegram(false);
-      setIsReady(true);
-      return;
-    }
+        if (!tg) {
+          // Browser / preview mode
+          console.log('Telegram WebApp not detected - running in browser mode');
+          if (isMounted) {
+            setIsTelegram(false);
+            setIsReady(true);
+          }
+          return;
+        }
 
-    // Use the ready event for a more reliable initialization
-    const onReady = () => {
-      tg.ready();
-      tg.expand();
+        console.log('Telegram WebApp detected:', {
+          version: tg.version,
+          platform: tg.platform,
+          initDataLength: tg.initData?.length || 0,
+        });
 
-      setUser(tg.initDataUnsafe?.user ?? null);
-      setInitData(tg.initData);
-      setStartParam(tg.initDataUnsafe?.start_param);
-      setIsTelegram(true);
-      setIsReady(true);
+        // Call ready and expand
+        try {
+          tg.ready();
+          tg.expand();
+          console.log('Telegram WebApp ready() and expand() called successfully');
+        } catch (e) {
+          console.warn('Error calling Telegram ready/expand:', e);
+        }
+
+        // Extract user data and init data
+        const userData = tg.initDataUnsafe?.user ?? null;
+        const rawInitData = tg.initData || "";
+        const startParamData = tg.initDataUnsafe?.start_param;
+
+        console.log('Telegram user data:', userData ? {
+          id: userData.id,
+          username: userData.username,
+          first_name: userData.first_name,
+        } : 'No user data');
+
+        if (isMounted) {
+          setUser(userData);
+          setInitData(rawInitData);
+          setStartParam(startParamData);
+          setIsTelegram(true);
+          setIsReady(true);
+          setError(null);
+        }
+      } catch (err) {
+        console.error('Error initializing Telegram WebApp:', err);
+        if (isMounted) {
+          setError('Failed to initialize Telegram WebApp');
+          setIsTelegram(false);
+          setIsReady(true);
+        }
+      }
     };
 
-    if (tg.initData) {
-      // If initData is already available, call onReady immediately
-      onReady();
+    // Check if Telegram WebApp is already available
+    if (window.Telegram?.WebApp) {
+      initializeTelegram();
     } else {
-      // Otherwise, wait for the ready event
-      tg.onEvent('main_button_pressed', onReady);
-      tg.onEvent('viewport_changed', onReady);
-      tg.onEvent('theme_changed', onReady);
-      // Fallback to a timeout if the events don't fire (e.g., older Telegram clients)
-      const timeout = setTimeout(onReady, 500);
-      
+      // Wait a bit for Telegram to load
+      const checkInterval = setInterval(() => {
+        if (window.Telegram?.WebApp) {
+          clearInterval(checkInterval);
+          initializeTelegram();
+        }
+      }, 100);
+
+      // Timeout after 3 seconds
+      const timeout = setTimeout(() => {
+        clearInterval(checkInterval);
+        if (!window.Telegram?.WebApp && isMounted) {
+          console.log('Telegram WebApp not loaded within timeout - assuming browser mode');
+          setIsTelegram(false);
+          setIsReady(true);
+        }
+      }, 3000);
+
       return () => {
-        tg.offEvent('main_button_pressed', onReady);
-        tg.offEvent('viewport_changed', onReady);
-        tg.offEvent('theme_changed', onReady);
+        clearInterval(checkInterval);
         clearTimeout(timeout);
       };
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  const haptic = useCallback(
+  const hapticFeedback = useCallback(
     (
       type:
         | "light"
@@ -85,35 +158,80 @@ export function useTelegram() {
         | "error"
         | "warning"
     ) => {
-      const tg = (window as any)?.Telegram?.WebApp as TelegramWebApp | undefined;
-      if (!tg?.HapticFeedback) return;
+      try {
+        const tg = window.Telegram?.WebApp;
+        if (!tg?.HapticFeedback) {
+          console.log('Haptic feedback not available');
+          return;
+        }
 
-      if (type === "success" || type === "error" || type === "warning") {
-        tg.HapticFeedback.notificationOccurred(type);
-      } else {
-        tg.HapticFeedback.impactOccurred(type);
+        if (type === "success" || type === "error" || type === "warning") {
+          tg.HapticFeedback.notificationOccurred(type);
+        } else {
+          tg.HapticFeedback.impactOccurred(type);
+        }
+      } catch (e) {
+        console.warn('Haptic feedback error:', e);
       }
     },
     []
   );
 
   const shareRef = useCallback((refCode: string) => {
-    const tg = (window as any)?.Telegram?.WebApp as TelegramWebApp | undefined;
-    if (!tg) return;
+    try {
+      const tg = window.Telegram?.WebApp;
+      if (!tg) {
+        console.log('Telegram not available for sharing');
+        // Fallback: copy to clipboard or show message
+        return;
+      }
 
-    const url = `https://t.me/StreakFarmBot?start=${refCode}`;
-    tg.openTelegramLink(
-      `https://t.me/share/url?url=${encodeURIComponent(url)}`
-    );
+      const url = `https://t.me/StreakFarmBot?start=${refCode}`;
+      tg.openTelegramLink(
+        `https://t.me/share/url?url=${encodeURIComponent(url)}`
+      );
+    } catch (e) {
+      console.error('Error sharing referral:', e);
+    }
+  }, []);
+
+  const openTelegramLink = useCallback((url: string) => {
+    try {
+      const tg = window.Telegram?.WebApp;
+      if (!tg) {
+        console.log('Telegram not available, opening in new tab');
+        window.open(url, '_blank');
+        return;
+      }
+
+      tg.openTelegramLink(url);
+    } catch (e) {
+      console.error('Error opening Telegram link:', e);
+      window.open(url, '_blank');
+    }
+  }, []);
+
+  const closeWebApp = useCallback(() => {
+    try {
+      const tg = window.Telegram?.WebApp;
+      if (tg) {
+        tg.close();
+      }
+    } catch (e) {
+      console.error('Error closing WebApp:', e);
+    }
   }, []);
 
   return {
     user,
     isTelegram,
     isReady,
-    initData,     // 👉 backend (/api/telegram-login) ko yahi bhejna hai
-    startParam,   // 👉 referral / deep-link ke liye
-    haptic,
+    initData,
+    startParam,
+    error,
+    hapticFeedback,
     shareRef,
+    openTelegramLink,
+    closeWebApp,
   };
 }
