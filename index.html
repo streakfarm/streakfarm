@@ -39,36 +39,6 @@
 
     <!-- Telegram WebApp SDK - Load synchronously before app -->
     <script src="https://telegram.org/js/telegram-web-app.js?56"></script>
-
-    <!-- Critical: Initialize Telegram WebApp immediately -->
-    <script>
-      // Initialize Telegram WebApp as soon as script loads
-      window.TelegramWebAppReady = false;
-      window.TelegramWebAppInitData = null;
-
-      (function initTelegramWebApp() {
-        if (window.Telegram?.WebApp) {
-          try {
-            const tg = window.Telegram.WebApp;
-            // Store initData before calling ready()
-            window.TelegramWebAppInitData = tg.initData || '';
-            console.log('[Telegram Pre-init] initData length:', window.TelegramWebAppInitData.length);
-
-            // Call ready() immediately as per Telegram docs
-            tg.ready();
-            tg.expand();
-
-            window.TelegramWebAppReady = true;
-            console.log('[Telegram Pre-init] WebApp ready and expanded');
-          } catch (e) {
-            console.error('[Telegram Pre-init] Error:', e);
-          }
-        } else {
-          console.log('[Telegram Pre-init] Not running in Telegram');
-          window.TelegramWebAppReady = true;
-        }
-      })();
-    </script>
   </head>
 
   <body>

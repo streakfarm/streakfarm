@@ -40,59 +40,114 @@ export function useProfile() {
   const queryClient = useQueryClient();
 
   // Get session once and cache it
-  const { data: session } = useQuery({
+  const { data: session, isLoading: isSessionLoading } = useQuery({
     queryKey: ['session'],
     queryFn: async () => {
       if (cachedSession) return cachedSession;
-      const { data } = await supabase.auth.getSession();
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        console.error('[useProfile] Session error:', error);
+        throw error;
+      }
       cachedSession = data.session;
       return data.session;
     },
-    staleTime: Infinity, // Don't refetch session
-    cacheTime: Infinity,
+    staleTime: Infinity,
+    retry: false,
   });
 
   const userId = session?.user?.id;
 
   // Fetch profile only when we have userId
-  const { data: profile, isLoading, error } = useQuery({
+  const { 
+    data: profile, 
+    isLoading: isProfileLoading, 
+    error: profileError 
+  } = useQuery({
     queryKey: ['profile', userId],
     queryFn: async () => {
-      if (!userId) return null;
-      
-      console.log('[useProfile] Fetching profile for:', userId.slice(0, 8));
-      
-      // Use maybeSingle() instead of single() to handle case when profile doesn't exist yet
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-      
-      if (error) {
-        console.error('[useProfile] Error:', error.message);
-        throw error;
+      if (!userId) {
+        console.log('[useProfile] No userId, returning null');
+        return null;
       }
       
-      if (!data) {
-        console.log('[useProfile] Profile not found yet, will retry...');
-        // Return null to trigger retry
-        throw new Error('Profile not found');
-      }
+      console.log('[useProfile] Fetching profile for user:', userId.slice(0, 8));
       
-      console.log('[useProfile] Profile fetched:', data?.username);
-      return data as Profile;
+      try {
+        // First try to get profile by user_id
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle();
+        
+        if (error) {
+          console.error('[useProfile] Database error:', error.message, error.code);
+          throw new Error(`Database error: ${error.message}`);
+        }
+        
+        if (data) {
+          console.log('[useProfile] Profile found:', data.username || 'no-username');
+          return data as Profile;
+        }
+        
+        // No profile found - this could be a race condition with the trigger
+        console.log('[useProfile] Profile not found, may need to retry');
+        
+        // Try to create profile manually if it doesn't exist
+        console.log('[useProfile] Attempting to create profile...');
+        const { data: newProfile, error: insertError } = await supabase
+          .from('profiles')
+          .insert({ user_id: userId })
+          .select()
+          .maybeSingle();
+        
+        if (insertError) {
+          // Profile might already exist (race condition), try fetching again
+          if (insertError.code === '23505') { // Unique violation
+            console.log('[useProfile] Profile already exists (race condition), fetching again...');
+            const { data: retryData, error: retryError } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('user_id', userId)
+              .maybeSingle();
+            
+            if (retryError) {
+              throw new Error(`Retry fetch error: ${retryError.message}`);
+            }
+            
+            if (retryData) {
+              return retryData as Profile;
+            }
+          }
+          
+          console.error('[useProfile] Insert error:', insertError.message);
+          throw new Error(`Failed to create profile: ${insertError.message}`);
+        }
+        
+        if (newProfile) {
+          console.log('[useProfile] Profile created successfully');
+          return newProfile as Profile;
+        }
+        
+        throw new Error('Profile not found and could not be created');
+        
+      } catch (err: any) {
+        console.error('[useProfile] Error in profile fetch:', err.message);
+        throw err;
+      }
     },
     enabled: !!userId,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000,
     retry: (failureCount, error: any) => {
-      // Retry up to 5 times if profile not found (race condition with trigger)
-      if (error?.message === 'Profile not found' && failureCount < 5) {
+      // Retry up to 3 times for race conditions
+      if (failureCount < 3) {
+        console.log(`[useProfile] Retrying profile fetch (attempt ${failureCount + 1})...`);
         return true;
       }
       return false;
     },
-    retryDelay: (attemptIndex) => Math.min(1000 * Math.pow(2, attemptIndex), 5000), // Exponential backoff
+    retryDelay: (attemptIndex) => Math.min(1000 * Math.pow(2, attemptIndex), 4000),
   });
 
   // Fetch leaderboard entry
@@ -105,9 +160,12 @@ export function useProfile() {
         .from('leaderboards')
         .select('*')
         .eq('user_id', profile.id)
-        .single();
+        .maybeSingle();
       
-      if (error && error.code !== 'PGRST116') throw error;
+      if (error && error.code !== 'PGRST116') {
+        console.error('[useProfile] Leaderboard error:', error.message);
+        throw error;
+      }
       return data as LeaderboardEntry | null;
     },
     enabled: !!profile?.id,
@@ -120,11 +178,18 @@ export function useProfile() {
     queryFn: async () => {
       if (!profile?.id) return 1;
       
-      const { data, error } = await supabase
-        .rpc('calculate_user_multiplier', { _profile_id: profile.id });
-      
-      if (error) throw error;
-      return data as number;
+      try {
+        const { data, error } = await supabase
+          .rpc('calculate_user_multiplier', { _profile_id: profile.id });
+        
+        if (error) {
+          console.error('[useProfile] Multiplier error:', error.message);
+          return 1;
+        }
+        return data as number;
+      } catch (e) {
+        return 1;
+      }
     },
     enabled: !!profile?.id,
     staleTime: 5 * 60 * 1000,
@@ -149,7 +214,7 @@ export function useProfile() {
         .update(safeUpdates)
         .eq('id', profile.id)
         .select()
-        .single();
+        .maybeSingle();
       
       if (error) throw error;
       return data;
@@ -159,12 +224,14 @@ export function useProfile() {
     },
   });
 
+  const isLoading = isSessionLoading || isProfileLoading;
+
   return {
     profile,
     leaderboardEntry,
     totalMultiplier: totalMultiplier || 1,
     isLoading,
-    error,
+    error: profileError,
     updateProfile,
     isAuthenticated: !!session?.user,
   };

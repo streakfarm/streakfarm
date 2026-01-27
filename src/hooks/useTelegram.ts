@@ -8,6 +8,7 @@ interface TelegramUser {
   language_code?: string;
   photo_url?: string;
   is_premium?: boolean;
+  allows_write_to_pm?: boolean;
 }
 
 interface TelegramWebApp {
@@ -18,6 +19,8 @@ interface TelegramWebApp {
     auth_date?: number;
     hash?: string;
     query_id?: string;
+    chat_type?: string;
+    chat_instance?: string;
   };
   ready: () => void;
   expand: () => void;
@@ -77,9 +80,6 @@ declare global {
     Telegram?: {
       WebApp?: TelegramWebApp;
     };
-    TelegramWebAppReady?: boolean;
-    TelegramWebAppInitData?: string;
-    __TELEGRAM_HOOK_INITIALIZED__?: boolean;
   }
 }
 
@@ -142,16 +142,13 @@ export function useTelegram() {
       return;
     }
 
-    // Mark as initialized to prevent double initialization
-    window.__TELEGRAM_HOOK_INITIALIZED__ = true;
-
     const initializeTelegram = () => {
       try {
         const tg = window.Telegram?.WebApp;
 
         if (!tg) {
-          console.log('[useTelegram] Telegram WebApp not detected - browser mode');
-          const newState = {
+          console.log('[useTelegram] Telegram WebApp not detected - running in browser mode');
+          const browserState = {
             user: null,
             isTelegram: false,
             isReady: true,
@@ -159,9 +156,19 @@ export function useTelegram() {
             startParam: undefined,
             error: null,
           };
-          globalTelegramState = newState;
-          setState(newState);
+          globalTelegramState = browserState;
+          setState(browserState);
           return;
+        }
+
+        // Call ready() immediately as per Telegram docs
+        tg.ready();
+        
+        // Expand to full height
+        try {
+          tg.expand();
+        } catch (e) {
+          console.log('[useTelegram] expand() not available or failed');
         }
 
         console.log('[useTelegram] Telegram WebApp detected:', {
@@ -169,30 +176,54 @@ export function useTelegram() {
           platform: tg.platform,
           initDataLength: tg.initData?.length || 0,
           hasUser: !!tg.initDataUnsafe?.user,
+          hasHash: !!tg.initDataUnsafe?.hash,
+          authDate: tg.initDataUnsafe?.auth_date,
         });
 
-        // Use pre-initialized data if available, otherwise get fresh from tg
-        let rawInitData = window.TelegramWebAppInitData || tg.initData || "";
+        // Get initData - this is the raw string that needs to be validated
+        // It's already URL-encoded and contains all parameters including hash
+        let rawInitData = tg.initData || "";
         
-        // If still no initData, try to construct from initDataUnsafe (fallback)
-        if (!rawInitData && tg.initDataUnsafe) {
+        // If initData is empty but we have initDataUnsafe with hash, construct initData
+        // This shouldn't normally happen, but it's a fallback
+        if (!rawInitData && tg.initDataUnsafe?.hash) {
+          console.log('[useTelegram] initData empty but initDataUnsafe has hash, constructing initData');
           const params = new URLSearchParams();
-          if (tg.initDataUnsafe.auth_date) params.set('auth_date', String(tg.initDataUnsafe.auth_date));
-          if (tg.initDataUnsafe.hash) params.set('hash', tg.initDataUnsafe.hash);
-          if (tg.initDataUnsafe.query_id) params.set('query_id', tg.initDataUnsafe.query_id);
-          if (tg.initDataUnsafe.user) params.set('user', JSON.stringify(tg.initDataUnsafe.user));
+          
+          if (tg.initDataUnsafe.query_id) {
+            params.set('query_id', tg.initDataUnsafe.query_id);
+          }
+          if (tg.initDataUnsafe.user) {
+            params.set('user', JSON.stringify(tg.initDataUnsafe.user));
+          }
+          if (tg.initDataUnsafe.auth_date) {
+            params.set('auth_date', String(tg.initDataUnsafe.auth_date));
+          }
+          if (tg.initDataUnsafe.hash) {
+            params.set('hash', tg.initDataUnsafe.hash);
+          }
+          if (tg.initDataUnsafe.chat_type) {
+            params.set('chat_type', tg.initDataUnsafe.chat_type);
+          }
+          if (tg.initDataUnsafe.chat_instance) {
+            params.set('chat_instance', tg.initDataUnsafe.chat_instance);
+          }
+          if (tg.initDataUnsafe.start_param) {
+            params.set('start_param', tg.initDataUnsafe.start_param);
+          }
+          
           rawInitData = params.toString();
-          console.log('[useTelegram] Constructed initData from initDataUnsafe');
         }
         
         const userData = tg.initDataUnsafe?.user ?? null;
         const startParamData = tg.initDataUnsafe?.start_param;
 
-        console.log('[useTelegram] Data extracted:', {
+        console.log('[useTelegram] Extracted data:', {
           initDataLength: rawInitData.length,
           hasUser: !!userData,
           userId: userData?.id,
           username: userData?.username,
+          startParam: startParamData,
         });
 
         const newState = {
@@ -208,13 +239,13 @@ export function useTelegram() {
         globalTelegramState = newState;
         setState(newState);
 
-        // Store referral code
+        // Store referral code in localStorage
         if (startParamData) {
           safeStorage.setItem('streakfarm_ref_code', startParamData);
         }
 
       } catch (err: any) {
-        console.error('[useTelegram] Error:', err);
+        console.error('[useTelegram] Initialization error:', err);
         const errorState = {
           user: null,
           isTelegram: false,
@@ -228,18 +259,20 @@ export function useTelegram() {
       }
     };
 
-    // Check if already initialized by pre-init script
-    if (window.TelegramWebAppReady !== undefined || window.Telegram?.WebApp) {
+    // Check if Telegram WebApp is available
+    if (window.Telegram?.WebApp) {
       initializeTelegram();
     } else {
-      // Wait for Telegram with timeout
+      // Wait for Telegram WebApp with timeout
+      console.log('[useTelegram] Waiting for Telegram WebApp...');
       let checkCount = 0;
-      const maxChecks = 30;
+      const maxChecks = 50; // 5 seconds total (50 * 100ms)
 
       const checkInterval = setInterval(() => {
         checkCount++;
         if (window.Telegram?.WebApp) {
           clearInterval(checkInterval);
+          console.log('[useTelegram] Telegram WebApp found after', checkCount, 'checks');
           initializeTelegram();
         } else if (checkCount >= maxChecks) {
           clearInterval(checkInterval);
@@ -256,6 +289,8 @@ export function useTelegram() {
           setState(browserState);
         }
       }, 100);
+
+      return () => clearInterval(checkInterval);
     }
   }, []);
 

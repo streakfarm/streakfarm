@@ -16,11 +16,13 @@ interface TelegramUser {
   language_code?: string;
   is_premium?: boolean;
   photo_url?: string;
+  allows_write_to_pm?: boolean;
 }
 
 async function validateTelegramData(initData: string, botToken: string): Promise<{ user: TelegramUser | null; isValid: boolean; error?: string }> {
   try {
     console.log("[validateTelegramData] Starting validation, initData length:", initData.length);
+    console.log("[validateTelegramData] initData preview:", initData.substring(0, 200));
 
     const params = new URLSearchParams(initData);
     const hash = params.get("hash");
@@ -39,7 +41,7 @@ async function validateTelegramData(initData: string, botToken: string): Promise
     dataCheckArr.sort();
     const dataCheckString = dataCheckArr.join("\n");
 
-    console.log("[validateTelegramData] Data check string length:", dataCheckString.length);
+    console.log("[validateTelegramData] Data check string:", dataCheckString);
 
     const encoder = new TextEncoder();
 
@@ -68,8 +70,8 @@ async function validateTelegramData(initData: string, botToken: string): Promise
       .join("");
 
     console.log("[validateTelegramData] Hash comparison:", {
-      receivedHashLength: hash.length,
-      calculatedHashLength: calculatedHash.length,
+      receivedHash: hash.substring(0, 20) + "...",
+      calculatedHash: calculatedHash.substring(0, 20) + "...",
       match: calculatedHash === hash,
     });
 
@@ -78,7 +80,7 @@ async function validateTelegramData(initData: string, botToken: string): Promise
       return { user: null, isValid: false, error: "Invalid Telegram data signature" };
     }
 
-    // Check auth_date to prevent replay attacks (optional but recommended)
+    // Check auth_date to prevent replay attacks
     const authDate = params.get("auth_date");
     if (authDate) {
       const authTimestamp = parseInt(authDate, 10);
@@ -86,7 +88,7 @@ async function validateTelegramData(initData: string, botToken: string): Promise
       const maxAge = 86400; // 24 hours
 
       if (now - authTimestamp > maxAge) {
-        console.error("[validateTelegramData] Auth data too old");
+        console.error("[validateTelegramData] Auth data too old:", now - authTimestamp, "seconds");
         return { user: null, isValid: false, error: "Authentication data expired" };
       }
     }
@@ -144,7 +146,7 @@ serve(async (req) => {
 
     // Validate initData format
     if (!initData.includes("hash=") || !initData.includes("user=")) {
-      console.error(`[${requestId}] DEBUG: Invalid initData format`);
+      console.error(`[${requestId}] DEBUG: Invalid initData format - missing hash or user`);
       return new Response(JSON.stringify({ error: "Invalid initData format" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -237,51 +239,92 @@ serve(async (req) => {
       throw new Error("Failed to get or create user");
     }
 
-    // 3. Upsert the profile with Telegram user data (create if not exists via trigger, update if exists)
+    // 3. Handle profile - use upsert to handle both create and update
     const fullName = `${tgUser.first_name} ${tgUser.last_name || ""}`.trim();
 
     try {
-      // First try to update existing profile
-      const { error: updateError } = await supabaseAdmin
+      console.log(`[${requestId}] DEBUG: Upserting profile for user:`, user.id);
+      
+      // First check if profile exists
+      const { data: existingProfile, error: checkError } = await supabaseAdmin
         .from('profiles')
-        .update({
-          telegram_id: tgUser.id,
-          username: tgUser.username || `user_${tgUser.id}`,
-          first_name: fullName,
-          avatar_url: tgUser.photo_url || null,
-          language_code: tgUser.language_code || 'en',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', user.id);
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (checkError) {
+        console.warn(`[${requestId}] DEBUG: Error checking profile:`, checkError.message);
+      }
 
-      if (updateError) {
-        console.warn(`[${requestId}] DEBUG: Profile update warning:`, updateError.message);
-        
-        // If update failed (profile might not exist yet), try insert
-        if (updateError.code === 'PGRST116' || updateError.message?.includes('0 rows')) {
-          console.log(`[${requestId}] DEBUG: Profile not found, creating new profile...`);
-          const { error: insertError } = await supabaseAdmin
-            .from('profiles')
-            .insert({
-              user_id: user.id,
-              telegram_id: tgUser.id,
-              username: tgUser.username || `user_${tgUser.id}`,
-              first_name: fullName,
-              avatar_url: tgUser.photo_url || null,
-              language_code: tgUser.language_code || 'en',
-            });
-          
-          if (insertError) {
-            console.warn(`[${requestId}] DEBUG: Profile insert warning:`, insertError.message);
-          } else {
-            console.log(`[${requestId}] DEBUG: Profile created successfully for user:`, user.id);
-          }
+      if (existingProfile) {
+        // Update existing profile
+        console.log(`[${requestId}] DEBUG: Updating existing profile`);
+        const { error: updateError } = await supabaseAdmin
+          .from('profiles')
+          .update({
+            telegram_id: tgUser.id,
+            username: tgUser.username || `user_${tgUser.id}`,
+            first_name: fullName,
+            avatar_url: tgUser.photo_url || null,
+            language_code: tgUser.language_code || 'en',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', user.id);
+
+        if (updateError) {
+          console.warn(`[${requestId}] DEBUG: Profile update error:`, updateError.message);
+        } else {
+          console.log(`[${requestId}] DEBUG: Profile updated successfully`);
         }
       } else {
-        console.log(`[${requestId}] DEBUG: Profile updated successfully for user:`, user.id);
+        // Create new profile
+        console.log(`[${requestId}] DEBUG: Creating new profile`);
+        const { error: insertError } = await supabaseAdmin
+          .from('profiles')
+          .insert({
+            user_id: user.id,
+            telegram_id: tgUser.id,
+            username: tgUser.username || `user_${tgUser.id}`,
+            first_name: fullName,
+            avatar_url: tgUser.photo_url || null,
+            language_code: tgUser.language_code || 'en',
+            raw_points: 0,
+            streak_current: 0,
+            streak_best: 0,
+            total_boxes_opened: 0,
+            total_tasks_completed: 0,
+            total_referrals: 0,
+          });
+
+        if (insertError) {
+          // Check if it's a unique violation (profile was created by trigger in the meantime)
+          if (insertError.code === '23505') {
+            console.log(`[${requestId}] DEBUG: Profile already exists (trigger created it), updating...`);
+            const { error: updateError } = await supabaseAdmin
+              .from('profiles')
+              .update({
+                telegram_id: tgUser.id,
+                username: tgUser.username || `user_${tgUser.id}`,
+                first_name: fullName,
+                avatar_url: tgUser.photo_url || null,
+                language_code: tgUser.language_code || 'en',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('user_id', user.id);
+
+            if (updateError) {
+              console.warn(`[${requestId}] DEBUG: Profile update after insert fail:`, updateError.message);
+            }
+          } else {
+            console.warn(`[${requestId}] DEBUG: Profile insert error:`, insertError.message);
+          }
+        } else {
+          console.log(`[${requestId}] DEBUG: Profile created successfully`);
+        }
       }
     } catch (profileError: any) {
-      console.warn(`[${requestId}] DEBUG: Profile update error (non-critical):`, profileError.message);
+      console.warn(`[${requestId}] DEBUG: Profile operation error (non-critical):`, profileError.message);
+      // Don't throw - auth can still succeed even if profile update fails
     }
 
     // 4. Sign in to get a session
