@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useRef, useCallback, ReactNode } from 'react';
-import { Session, User } from '@supabase/supabase-js';
+import { Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useTelegram } from '@/hooks/useTelegram';
 import { useQueryClient } from '@tanstack/react-query';
@@ -7,7 +7,6 @@ import { toast } from 'sonner';
 
 interface AuthContextType {
   session: Session | null;
-  user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   authError: string | null;
@@ -17,7 +16,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({
   session: null,
-  user: null,
   isLoading: true,
   isAuthenticated: false,
   authError: null,
@@ -29,135 +27,88 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
-interface AuthProviderProps {
-  children: ReactNode;
-}
-
-// Use sessionStorage to persist auth attempted state across React re-renders
-// but reset on page refresh (new session)
-const getAuthAttempted = () => {
+// Track auth attempt in sessionStorage (resets on page refresh)
+const wasAuthAttempted = () => {
   try {
-    return sessionStorage.getItem('streakfarm_auth_attempted') === 'true';
+    return sessionStorage.getItem('sf_auth_attempted') === 'true';
   } catch {
     return false;
   }
 };
 
-const setAuthAttempted = (value: boolean) => {
+const markAuthAttempted = () => {
   try {
-    sessionStorage.setItem('streakfarm_auth_attempted', value ? 'true' : 'false');
-  } catch {
-    // Ignore
-  }
+    sessionStorage.setItem('sf_auth_attempted', 'true');
+  } catch {}
 };
 
 const clearAuthAttempted = () => {
   try {
-    sessionStorage.removeItem('streakfarm_auth_attempted');
-  } catch {
-    // Ignore
-  }
+    sessionStorage.removeItem('sf_auth_attempted');
+  } catch {}
 };
 
-export function AuthProvider({ children }: AuthProviderProps) {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [initComplete, setInitComplete] = useState(false);
-
-  const isAuthInProgress = useRef(false);
+  const [hasCheckedSession, setHasCheckedSession] = useState(false);
+  
   const { initData, isReady, isTelegram } = useTelegram();
   const queryClient = useQueryClient();
+  const authInProgress = useRef(false);
 
-  // Handle Auth State Changes
+  // Listen for auth state changes
   useEffect(() => {
-    console.log('[AuthProvider] Setting up auth listener');
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, currentSession) => {
-        console.log('[AuthProvider] Auth event:', event, 'hasSession:', !!currentSession);
-        
+        console.log('[Auth] Event:', event, 'Session:', !!currentSession);
         setSession(currentSession);
-
+        
         if (event === 'SIGNED_IN') {
-          queryClient.invalidateQueries();
-          setAuthError(null);
           setIsLoading(false);
+          setAuthError(null);
         } else if (event === 'SIGNED_OUT') {
           clearAuthAttempted();
-          queryClient.clear();
-          setIsLoading(false);
-        } else if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
           setIsLoading(false);
         }
       }
     );
 
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
-      console.log('[AuthProvider] Initial session check:', currentSession?.user?.id?.slice(0, 8) || 'none');
-      setSession(currentSession);
-      setInitComplete(true);
-      if (currentSession) {
+    // Check existing session
+    supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
+      console.log('[Auth] Existing session:', !!existingSession);
+      setSession(existingSession);
+      setHasCheckedSession(true);
+      if (existingSession) {
         setIsLoading(false);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [queryClient]);
+  }, []);
 
+  // Attempt Telegram login
   const attemptTelegramLogin = useCallback(async () => {
-    // Check all conditions before attempting
-    if (!isReady) {
-      console.log('[AuthProvider] Not ready yet, skipping auth');
-      return;
-    }
+    if (authInProgress.current) return;
+    if (wasAuthAttempted()) return;
+    if (!isReady || !isTelegram || !initData) return;
 
-    if (session) {
-      console.log('[AuthProvider] Already have session, skipping auth');
-      return;
-    }
-
-    if (isAuthInProgress.current) {
-      console.log('[AuthProvider] Auth already in progress, skipping');
-      return;
-    }
-
-    if (getAuthAttempted()) {
-      console.log('[AuthProvider] Auth already attempted this session, skipping');
-      return;
-    }
-
-    if (!isTelegram) {
-      console.log('[AuthProvider] Not in Telegram, skipping');
-      return;
-    }
-
-    if (!initData || initData.length < 10) {
-      console.log('[AuthProvider] No initData available');
-      setAuthError('Please open this app from the Telegram bot menu button.');
-      setAuthAttempted(true);
-      setIsLoading(false);
-      return;
-    }
-
-    console.log('[AuthProvider] Starting Telegram login...');
-    isAuthInProgress.current = true;
-    setAuthAttempted(true);
+    authInProgress.current = true;
+    markAuthAttempted();
     setAuthError(null);
 
     try {
+      console.log('[Auth] Attempting Telegram login...');
+      
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
       if (!supabaseUrl || !publishableKey) {
-        throw new Error('Missing Supabase environment variables');
+        throw new Error('Missing Supabase config');
       }
 
-      const functionUrl = `${supabaseUrl}/functions/v1/telegram-auth`;
-      console.log('[AuthProvider] Calling edge function:', functionUrl);
-
-      const response = await fetch(functionUrl, {
+      const response = await fetch(`${supabaseUrl}/functions/v1/telegram-auth`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -166,136 +117,80 @@ export function AuthProvider({ children }: AuthProviderProps) {
         body: JSON.stringify({ initData }),
       });
 
-      console.log('[AuthProvider] Response status:', response.status);
-      
       const result = await response.json();
-      console.log('[AuthProvider] Response result:', { 
-        hasError: !!result.error, 
-        hasSession: !!result.session,
-        hasAccessToken: !!result.session?.access_token 
-      });
+      console.log('[Auth] Response:', response.status, result.error || 'success');
 
       if (!response.ok) {
-        throw new Error(result.error || `Auth failed (${response.status})`);
+        throw new Error(result.error || `Auth failed: ${response.status}`);
       }
 
-      const accessToken = result.session?.access_token;
-      const refreshToken = result.session?.refresh_token;
+      const { access_token, refresh_token } = result.session || {};
 
-      if (accessToken && refreshToken) {
-        console.log('[AuthProvider] Setting session with tokens...');
-        const { error } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
-
-        if (error) {
-          console.error('[AuthProvider] setSession error:', error);
-          throw error;
-        }
-        
-        console.log('[AuthProvider] Session set successfully');
-        toast.success('Welcome to StreakFarm!');
-      } else {
-        throw new Error('Invalid response: missing tokens');
+      if (!access_token || !refresh_token) {
+        throw new Error('Invalid response: no tokens');
       }
-    } catch (error: any) {
-      console.error('[AuthProvider] Auth error:', error.message);
-      setAuthError(error.message);
-      toast.error(`Login failed: ${error.message}`);
+
+      const { error } = await supabase.auth.setSession({
+        access_token,
+        refresh_token,
+      });
+
+      if (error) throw error;
+      
+      toast.success('Welcome to StreakFarm!');
+      
+    } catch (err: any) {
+      console.error('[Auth] Login error:', err.message);
+      setAuthError(err.message);
       setIsLoading(false);
     } finally {
-      isAuthInProgress.current = false;
+      authInProgress.current = false;
     }
-  }, [isReady, initData, session, isTelegram]);
+  }, [isReady, isTelegram, initData]);
 
-  // Main effect to handle auth flow
+  // Handle auth flow
   useEffect(() => {
-    console.log('[AuthProvider] Main effect:', { 
-      isReady, 
-      isTelegram, 
-      hasSession: !!session, 
-      authAttempted: getAuthAttempted(),
-      initComplete,
-      initDataLength: initData?.length || 0
-    });
+    if (!hasCheckedSession) return;
+    if (session) return; // Already logged in
+    if (!isReady) return; // Wait for Telegram init
 
-    // If not ready yet, keep loading
-    if (!isReady) {
-      console.log('[AuthProvider] Waiting for Telegram initialization...');
-      return;
-    }
-
-    // If we have a session, we're done
-    if (session) {
-      console.log('[AuthProvider] Session exists, loading complete');
+    // Not in Telegram - show prompt
+    if (!isTelegram) {
       setIsLoading(false);
-      return;
-    }
-
-    // If not in Telegram and init complete, show Telegram prompt
-    if (!isTelegram && initComplete) {
-      console.log('[AuthProvider] Not in Telegram environment');
-      setIsLoading(false);
-      return;
-    }
-
-    // In Telegram with initData - try auth
-    if (isTelegram && initData && initData.length >= 10 && !getAuthAttempted() && !isAuthInProgress.current) {
-      console.log('[AuthProvider] Conditions met, attempting Telegram auth...');
-      attemptTelegramLogin();
       return;
     }
 
     // In Telegram but no initData
-    if (isTelegram && (!initData || initData.length < 10) && initComplete) {
-      console.log('[AuthProvider] In Telegram but no initData');
-      setAuthError('Unable to get Telegram authentication data. Please reopen from the bot menu button.');
+    if (!initData) {
+      setAuthError('Please open from bot menu button');
       setIsLoading(false);
       return;
     }
 
-    // Already attempted auth and failed
-    if (getAuthAttempted() && !session && !authError) {
-      console.log('[AuthProvider] Auth was attempted but no session');
-      setAuthError('Authentication failed. Please try again.');
-      setIsLoading(false);
-      return;
-    }
-
-    // Default: if init complete, stop loading
-    if (initComplete) {
-      console.log('[AuthProvider] Init complete, stopping loading');
+    // Try login
+    if (!wasAuthAttempted()) {
+      attemptTelegramLogin();
+    } else if (!authInProgress.current) {
+      // Already attempted and failed
       setIsLoading(false);
     }
+  }, [hasCheckedSession, session, isReady, isTelegram, initData, attemptTelegramLogin]);
 
-  }, [isReady, isTelegram, session, authError, initComplete, initData, attemptTelegramLogin]);
-
-  // Safety timeout - force stop loading after 10 seconds
+  // Safety timeout - stop loading after 10s
   useEffect(() => {
     if (!isLoading) return;
-    
     const timeout = setTimeout(() => {
-      console.log('[AuthProvider] Safety timeout - forcing loading false');
+      console.log('[Auth] Safety timeout');
       setIsLoading(false);
-      if (!authError && !session) {
-        setAuthError('Loading timed out. Please refresh and try again.');
-      }
     }, 10000);
-    
     return () => clearTimeout(timeout);
-  }, [isLoading, session, authError]);
+  }, [isLoading]);
 
   const retryAuth = useCallback(() => {
-    console.log('[AuthProvider] Retrying auth...');
-    isAuthInProgress.current = false;
     clearAuthAttempted();
     setAuthError(null);
     setIsLoading(true);
-    // Small delay to let state update
-    setTimeout(() => {
-      attemptTelegramLogin();
-    }, 100);
+    attemptTelegramLogin();
   }, [attemptTelegramLogin]);
 
   const signOut = async () => {
@@ -305,17 +200,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        session,
-        user: session?.user ?? null,
-        isLoading,
-        isAuthenticated: !!session?.user,
-        authError,
-        retryAuth,
-        signOut,
-      }}
-    >
+    <AuthContext.Provider value={{
+      session,
+      isLoading,
+      isAuthenticated: !!session?.user,
+      authError,
+      retryAuth,
+      signOut,
+    }}>
       {children}
     </AuthContext.Provider>
   );
