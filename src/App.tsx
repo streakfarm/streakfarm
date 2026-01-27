@@ -21,14 +21,21 @@ const queryClient = new QueryClient({
 });
 
 function AppContent() {
-  const { isLoading, isAuthenticated, authError, retryAuth } = useAuth();
+  const { isLoading, isAuthenticated, authError, retryAuth, session } = useAuth();
   const { isTelegram, isReady, error: telegramError, initData } = useTelegram();
   const [showDebug, setShowDebug] = useState(false);
 
-  // Debug logging
-  useEffect(() => {
-    console.log("[App] State:", { isLoading, isAuthenticated, isTelegram, isReady, authError, initDataLen: initData?.length });
-  }, [isLoading, isAuthenticated, isTelegram, isReady, authError, initData]);
+  // Debug logging on every render
+  console.log("[App] Render:", { 
+    isLoading, 
+    isAuthenticated, 
+    isTelegram, 
+    isReady, 
+    hasAuthError: !!authError, 
+    hasTelegramError: !!telegramError,
+    initDataLen: initData?.length || 0,
+    hasSession: !!session
+  });
 
   // Telegram WebApp setup
   useEffect(() => {
@@ -36,23 +43,50 @@ function AppContent() {
       try {
         window.Telegram.WebApp.ready();
         window.Telegram.WebApp.expand();
+        console.log('[App] Telegram WebApp ready() called');
       } catch (e) {
-        console.warn("[App] Telegram setup error:", e);
+        console.warn('[App] Telegram setup error:', e);
       }
     }
   }, []);
 
-  // Double-tap for debug
+  // Triple-tap for debug (easier than double-tap)
   useEffect(() => {
-    let lastTap = 0;
+    let tapCount = 0;
+    let lastTapTime = 0;
+    
     const handleTap = () => {
       const now = Date.now();
-      if (now - lastTap < 300) setShowDebug(p => !p);
-      lastTap = now;
+      if (now - lastTapTime < 500) {
+        tapCount++;
+        if (tapCount >= 3) {
+          setShowDebug(p => !p);
+          tapCount = 0;
+        }
+      } else {
+        tapCount = 1;
+      }
+      lastTapTime = now;
     };
+    
     document.addEventListener('click', handleTap);
     return () => document.removeEventListener('click', handleTap);
   }, []);
+
+  // Show loading state
+  if (isLoading || !isReady) {
+    return (
+      <>
+        <SplashScreen />
+        {showDebug && (
+          <div className="fixed bottom-4 left-4 right-4 bg-black/90 text-green-400 p-3 rounded-lg text-xs font-mono z-50">
+            <div>Loading... isReady={isReady ? 'Y' : 'N'} | isLoading={isLoading ? 'Y' : 'N'}</div>
+            <div>isTelegram={isTelegram ? 'Y' : 'N'} | initData={initData?.length || 0}</div>
+          </div>
+        )}
+      </>
+    );
+  }
 
   // Error states
   if (authError) {
@@ -61,7 +95,8 @@ function AppContent() {
         <SplashScreen error={authError} onRetry={retryAuth} />
         {showDebug && (
           <div className="fixed bottom-4 left-4 right-4 bg-black/90 text-green-400 p-3 rounded-lg text-xs font-mono z-50">
-            <div>Debug: isTelegram={isTelegram ? 'Y' : 'N'} | isReady={isReady ? 'Y' : 'N'} | initData={initData?.length || 0}</div>
+            <div>Auth Error | isTelegram={isTelegram ? 'Y' : 'N'}</div>
+            <div>initData={initData?.length || 0} | session={session?.user?.id?.slice(0,8) || 'none'}</div>
           </div>
         )}
       </>
@@ -70,11 +105,6 @@ function AppContent() {
 
   if (telegramError) {
     return <SplashScreen error={telegramError} onRetry={retryAuth} />;
-  }
-
-  // Loading state
-  if (isLoading || !isReady) {
-    return <SplashScreen />;
   }
 
   // Not in Telegram, not authenticated
@@ -93,6 +123,7 @@ function AppContent() {
   }
 
   // SUCCESS - Show the app!
+  console.log('[App] Showing app - authenticated:', isAuthenticated);
   return (
     <BrowserRouter>
       <AnimatedRoutes />
