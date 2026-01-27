@@ -59,15 +59,27 @@ const secretKey = createHmac("sha256", botToken).update("WebAppData").digest();
 }
 
 Deno.serve(async (req) => {
-  console.log("telegram-auth function called, method:", req.method);
+  console.log("DEBUG: telegram-auth function called");
+  console.log("DEBUG: Method:", req.method);
+  console.log("DEBUG: Headers:", JSON.stringify(Object.fromEntries(req.headers.entries())));
   
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { initData, startParam } = await req.json();
-    console.log("Received initData length:", initData?.length || 0, "startParam:", startParam || "none");
+    let body;
+    try {
+      body = await req.json();
+      console.log("DEBUG: Body received successfully");
+    } catch (e) {
+      console.error("DEBUG: Failed to parse JSON body:", e);
+      return new Response(JSON.stringify({ error: "Invalid JSON body" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const { initData, startParam } = body;
+    console.log("DEBUG: initData length:", initData?.length || 0);
+    console.log("DEBUG: startParam:", startParam || "none");
 
     if (!initData || typeof initData !== "string") {
       console.error("Missing or invalid initData");
@@ -81,7 +93,9 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     
-    console.log("Environment check - BOT_TOKEN exists:", !!botToken, "SUPABASE_URL exists:", !!supabaseUrl, "SERVICE_ROLE_KEY exists:", !!serviceRoleKey);
+    console.log("DEBUG: Env Check - BOT_TOKEN:", botToken ? "EXISTS (starts with " + botToken.substring(0, 4) + ")" : "MISSING");
+    console.log("DEBUG: Env Check - SUPABASE_URL:", supabaseUrl ? "EXISTS" : "MISSING");
+    console.log("DEBUG: Env Check - SERVICE_ROLE_KEY:", serviceRoleKey ? "EXISTS" : "MISSING");
     
     if (!botToken) {
       console.error("TELEGRAM_BOT_TOKEN not configured - available env keys:", Object.keys(Deno.env.toObject()).filter(k => !k.includes("KEY") && !k.includes("TOKEN") && !k.includes("SECRET")));
