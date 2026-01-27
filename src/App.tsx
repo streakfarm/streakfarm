@@ -15,7 +15,7 @@ const queryClient = new QueryClient({
     queries: {
       retry: 2,
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      staleTime: 5 * 60 * 1000,
     },
   },
 });
@@ -27,96 +27,72 @@ function AppContent() {
 
   // Debug logging
   useEffect(() => {
-    console.log("[AppContent] State update:", {
-      isLoading,
-      isAuthenticated,
-      isTelegram,
-      isReady,
-      authError,
-      telegramError,
-      initDataLength: initData?.length || 0,
-    });
-  }, [isLoading, isAuthenticated, isTelegram, isReady, authError, telegramError, initData]);
+    console.log("[App] State:", { isLoading, isAuthenticated, isTelegram, isReady, authError, initDataLen: initData?.length });
+  }, [isLoading, isAuthenticated, isTelegram, isReady, authError, initData]);
 
-  // Telegram WebApp handshake - ensure ready() is called
+  // Telegram WebApp setup
   useEffect(() => {
     if (window.Telegram?.WebApp) {
-      console.log("[AppContent] Telegram WebApp detected - ensuring ready() and expand()");
       try {
         window.Telegram.WebApp.ready();
         window.Telegram.WebApp.expand();
-
-        // Set theme colors to match Telegram
-        const tg = window.Telegram.WebApp;
-        if (tg.themeParams) {
-          document.body.style.backgroundColor = tg.themeParams.bg_color || '#000000';
-        }
       } catch (e) {
-        console.warn("[AppContent] Error calling Telegram WebApp methods:", e);
+        console.warn("[App] Telegram setup error:", e);
       }
-    } else {
-      console.log("[AppContent] Running outside Telegram (browser mode)");
     }
   }, []);
 
-  // Handle double-tap to show debug info
+  // Double-tap for debug
   useEffect(() => {
     let lastTap = 0;
     const handleTap = () => {
       const now = Date.now();
-      if (now - lastTap < 300) {
-        setShowDebug(prev => !prev);
-      }
+      if (now - lastTap < 300) setShowDebug(p => !p);
       lastTap = now;
     };
     document.addEventListener('click', handleTap);
     return () => document.removeEventListener('click', handleTap);
   }, []);
 
-  // Show error state
+  // Error states
   if (authError) {
     return (
       <>
         <SplashScreen error={authError} onRetry={retryAuth} />
         {showDebug && (
-          <div className="fixed bottom-4 left-4 right-4 bg-black/80 text-white p-4 rounded-lg text-xs font-mono z-50 max-h-48 overflow-auto">
-            <div>Debug Info:</div>
-            <div>isTelegram: {isTelegram ? 'true' : 'false'}</div>
-            <div>isReady: {isReady ? 'true' : 'false'}</div>
-            <div>initData length: {initData?.length || 0}</div>
-            <div>authError: {authError}</div>
+          <div className="fixed bottom-4 left-4 right-4 bg-black/90 text-green-400 p-3 rounded-lg text-xs font-mono z-50">
+            <div>Debug: isTelegram={isTelegram ? 'Y' : 'N'} | isReady={isReady ? 'Y' : 'N'} | initData={initData?.length || 0}</div>
           </div>
         )}
       </>
     );
   }
 
-  // Show Telegram initialization error
   if (telegramError) {
     return <SplashScreen error={telegramError} onRetry={retryAuth} />;
   }
 
-  // Loading state (auth or Telegram initialization)
+  // Loading state
   if (isLoading || !isReady) {
     return <SplashScreen />;
   }
 
-  // Not in Telegram and not authenticated - show prompt
+  // Not in Telegram, not authenticated
   if (!isTelegram && !isAuthenticated) {
     return <SplashScreen showTelegramPrompt />;
   }
 
-  // In Telegram but no initData - show error
+  // In Telegram but no initData and not authenticated
   if (isTelegram && !isAuthenticated && (!initData || initData.length < 10)) {
     return (
       <SplashScreen
-        error="Unable to get Telegram authentication data. Please try opening the app again from the bot."
+        error="Unable to get Telegram auth data. Please reopen from the bot."
         onRetry={retryAuth}
       />
     );
   }
 
-  // All good - show the app
+  // SUCCESS - Show the app!
   return (
     <BrowserRouter>
       <AnimatedRoutes />

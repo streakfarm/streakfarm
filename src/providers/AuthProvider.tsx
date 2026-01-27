@@ -33,48 +33,28 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
-// Safe localStorage access
-const safeStorage = {
-  getItem: (key: string): string | null => {
-    try {
-      return localStorage.getItem(key);
-    } catch {
-      return null;
-    }
-  },
-  setItem: (key: string, value: string): void => {
-    try {
-      localStorage.setItem(key, value);
-    } catch {
-      // Ignore
-    }
-  },
-  removeItem: (key: string): void => {
-    try {
-      localStorage.removeItem(key);
-    } catch {
-      // Ignore
-    }
-  },
-};
+// Global auth state to prevent double initialization
+let globalAuthAttempted = false;
+let globalSession: Session | null = null;
 
 export function AuthProvider({ children }: AuthProviderProps) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [session, setSession] = useState<Session | null>(globalSession);
+  const [isLoading, setIsLoading] = useState(!globalSession);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [authAttempted, setAuthAttempted] = useState(false);
 
   const isAuthInProgress = useRef(false);
-  const { initData, isReady, isTelegram, hapticFeedback } = useTelegram();
+  const { initData, isReady, isTelegram } = useTelegram();
   const queryClient = useQueryClient();
 
   // Handle Auth State Changes
   useEffect(() => {
-    console.log('[AuthProvider] Setting up auth state listener');
+    console.log('[AuthProvider] Setting up auth listener');
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, currentSession) => {
-        console.log('[AuthProvider] Auth state changed:', event, currentSession?.user?.id);
+        console.log('[AuthProvider] Auth event:', event, 'User:', currentSession?.user?.id?.slice(0, 8));
+        
+        globalSession = currentSession;
         setSession(currentSession);
 
         if (event === 'SIGNED_IN') {
@@ -82,20 +62,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
           setAuthError(null);
           setIsLoading(false);
         } else if (event === 'SIGNED_OUT') {
+          globalSession = null;
+          globalAuthAttempted = false;
           queryClient.clear();
           setIsLoading(false);
         } else if (event === 'TOKEN_REFRESHED') {
-          // Token refreshed, session is still valid
+          setIsLoading(false);
+        } else if (event === 'INITIAL_SESSION') {
+          // Initial session check complete
           setIsLoading(false);
         }
       }
     );
 
-    // Initial session check
+    // Check for existing session immediately
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
-      console.log('[AuthProvider] Initial session check:', currentSession?.user?.id || 'No session');
-      setSession(currentSession);
+      console.log('[AuthProvider] Initial session:', currentSession?.user?.id?.slice(0, 8) || 'none');
       if (currentSession) {
+        globalSession = currentSession;
+        setSession(currentSession);
         setIsLoading(false);
       }
     });
@@ -104,201 +89,136 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [queryClient]);
 
   const attemptTelegramLogin = useCallback(async () => {
-    // Prevent multiple concurrent attempts or attempts if already logged in
-    if (!isReady) {
-      console.log('[AuthProvider] Skipping auth: Telegram not ready');
+    // Prevent multiple attempts
+    if (!isReady || session || isAuthInProgress.current || globalAuthAttempted) {
+      console.log('[AuthProvider] Skipping auth:', { isReady, hasSession: !!session, inProgress: isAuthInProgress.current, globalAttempted: globalAuthAttempted });
       return;
     }
 
-    if (session) {
-      console.log('[AuthProvider] Skipping auth: Already have session');
-      return;
-    }
-
-    if (isAuthInProgress.current) {
-      console.log('[AuthProvider] Skipping auth: Auth already in progress');
-      return;
-    }
-
-    // If not in Telegram and no session, don't try Telegram auth
+    // Skip if not in Telegram
     if (!isTelegram) {
-      console.log('[AuthProvider] Not in Telegram, skipping Telegram auth');
+      console.log('[AuthProvider] Not in Telegram, skipping');
       setIsLoading(false);
       return;
     }
 
-    // Official Flow: Must have initData for Telegram auth
-    if (!initData || !initData.trim()) {
-      console.log('[AuthProvider] No Telegram initData available. Cannot auto-login.');
-      setAuthError('No Telegram authentication data available. Please open this app from the Telegram bot.');
+    // Must have initData
+    if (!initData || initData.length < 10) {
+      console.log('[AuthProvider] No initData available');
+      setAuthError('Please open this app from the Telegram bot.');
       setIsLoading(false);
-      setAuthAttempted(true);
+      globalAuthAttempted = true;
       return;
     }
 
-    console.log('[AuthProvider] Official Flow: Starting Telegram auto-login...');
-    console.log('[AuthProvider] initData length:', initData.length);
-    console.log('[AuthProvider] initData preview:', initData.substring(0, 100));
-
+    console.log('[AuthProvider] Starting Telegram login...');
     isAuthInProgress.current = true;
+    globalAuthAttempted = true;
     setAuthError(null);
-    setIsLoading(true);
-    setAuthAttempted(true);
 
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-      console.log('[AuthProvider] Environment check:', {
-        hasSupabaseUrl: !!supabaseUrl,
-        hasPublishableKey: !!publishableKey,
-      });
-
       if (!supabaseUrl || !publishableKey) {
-        throw new Error('Missing Supabase environment variables. Please check your .env file.');
+        throw new Error('Missing Supabase environment variables');
       }
 
       const functionUrl = `${supabaseUrl}/functions/v1/telegram-auth`;
-      console.log('[AuthProvider] Calling edge function:', functionUrl);
+      console.log('[AuthProvider] Calling:', functionUrl);
 
-      let response;
-      try {
-        response = await fetch(functionUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publishableKey}`,
-          },
-          body: JSON.stringify({ initData }),
-        });
-      } catch (fetchError: any) {
-        console.error('[AuthProvider] Fetch error:', fetchError);
-        throw new Error(`Network error: ${fetchError.message}. Check if edge function is deployed and CORS is configured.`);
-      }
-
-      console.log('[AuthProvider] Response received:', { status: response.status, statusText: response.statusText });
-
-      let result;
-      try {
-        result = await response.json();
-      } catch (parseError) {
-        console.error('[AuthProvider] Failed to parse response:', parseError);
-        const text = await response.text();
-        console.error('[AuthProvider] Raw response:', text);
-        throw new Error(`Invalid response from server: ${text.substring(0, 200)}`);
-      }
-
-      console.log('[AuthProvider] Edge function response:', {
-        status: response.status,
-        ok: response.ok,
-        resultKeys: Object.keys(result),
-        hasError: !!result.error,
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${publishableKey}`,
+        },
+        body: JSON.stringify({ initData }),
       });
 
+      console.log('[AuthProvider] Response:', response.status);
+
+      const result = await response.json();
+
       if (!response.ok) {
-        throw new Error(result.error || `Authentication failed (${response.status})`);
+        throw new Error(result.error || `Auth failed (${response.status})`);
       }
 
-      // If we got session tokens back
-      if (result.access_token && result.refresh_token) {
-        console.log('[AuthProvider] Setting session from tokens...');
+      // Set session
+      const accessToken = result.access_token || result.session?.access_token;
+      const refreshToken = result.refresh_token || result.session?.refresh_token;
+
+      if (accessToken && refreshToken) {
+        console.log('[AuthProvider] Setting session...');
         const { error } = await supabase.auth.setSession({
-          access_token: result.access_token,
-          refresh_token: result.refresh_token,
+          access_token: accessToken,
+          refresh_token: refreshToken,
         });
 
         if (error) throw error;
-
-        hapticFeedback('success');
-        toast.success('Successfully logged in via Telegram!');
-      } else if (result.session?.access_token && result.session?.refresh_token) {
-        console.log('[AuthProvider] Setting session from session object...');
-        const { error } = await supabase.auth.setSession({
-          access_token: result.session.access_token,
-          refresh_token: result.session.refresh_token,
-        });
-        if (error) throw error;
-        hapticFeedback('success');
-        toast.success('Successfully logged in via Telegram!');
+        
+        toast.success('Logged in!');
       } else {
-        console.error('[AuthProvider] Invalid response structure:', Object.keys(result));
-        throw new Error('Invalid authentication response from server: missing session tokens');
+        throw new Error('Invalid response: missing tokens');
       }
     } catch (error: any) {
-      console.error('[AuthProvider] Telegram auth error:', error.message);
+      console.error('[AuthProvider] Auth error:', error.message);
       setAuthError(error.message);
       setIsLoading(false);
-
-      // Show toast for errors except abort/cancellation
-      if (error.name !== 'AbortError') {
-        toast.error(`Auth Error: ${error.message}`);
-      }
+      toast.error(`Auth Error: ${error.message}`);
     } finally {
       isAuthInProgress.current = false;
     }
-  }, [isReady, initData, session, hapticFeedback, isTelegram]);
+  }, [isReady, initData, session, isTelegram]);
 
-  // Auto-trigger login when Telegram is ready
+  // Auto-trigger login
   useEffect(() => {
-    console.log('[AuthProvider] Auth effect triggered:', {
-      isReady,
-      isTelegram,
-      hasSession: !!session,
-      authAttempted,
-      initDataLength: initData?.length || 0,
-    });
+    console.log('[AuthProvider] Effect:', { isReady, isTelegram, hasSession: !!session, attempted: globalAuthAttempted });
 
-    // Only attempt if we are in Telegram, ready, and NOT already logged in
-    if (isReady && isTelegram && !session && !authAttempted) {
-      console.log('[AuthProvider] Conditions met, attempting Telegram login');
+    if (isReady && isTelegram && !session && !globalAuthAttempted) {
       attemptTelegramLogin();
-    } else if (isReady && !isTelegram && !session) {
-      // Not in Telegram and no session - show the "Open in Telegram" prompt
-      console.log('[AuthProvider] Not in Telegram, no session - showing Telegram prompt');
-      setIsLoading(false);
-    } else if (isReady && isTelegram && !session && authAttempted && authError) {
-      // In Telegram but auth failed - stop loading to show error
-      console.log('[AuthProvider] Auth failed, stopping loading');
+    } else if (isReady && !session && globalAuthAttempted && !authError) {
+      // Already attempted, no session, no error - show Telegram prompt
       setIsLoading(false);
     } else if (isReady && session) {
-      // Already have session
-      console.log('[AuthProvider] Already authenticated');
+      // Have session
+      setIsLoading(false);
+    } else if (isReady && !isTelegram && !session) {
+      // Not in Telegram
       setIsLoading(false);
     }
-  }, [isReady, isTelegram, session, authError, authAttempted, attemptTelegramLogin, initData]);
+  }, [isReady, isTelegram, session, authError, attemptTelegramLogin]);
 
-  // Safety timeout - if loading for more than 15 seconds, stop loading
+  // Safety timeout
   useEffect(() => {
     if (isLoading) {
       const timeout = setTimeout(() => {
         if (isLoading && !session) {
-          console.log('[AuthProvider] Auth loading timeout - forcing loading to false');
+          console.log('[AuthProvider] Timeout - forcing loading false');
           setIsLoading(false);
           if (!authError) {
             setAuthError('Authentication timed out. Please try again.');
           }
         }
-      }, 15000);
+      }, 10000);
       return () => clearTimeout(timeout);
     }
   }, [isLoading, session, authError]);
 
   const retryAuth = useCallback(() => {
-    console.log('[AuthProvider] Retrying auth...');
+    console.log('[AuthProvider] Retrying...');
     isAuthInProgress.current = false;
-    setAuthAttempted(false);
+    globalAuthAttempted = false;
     setAuthError(null);
+    setIsLoading(true);
     attemptTelegramLogin();
   }, [attemptTelegramLogin]);
 
   const signOut = async () => {
-    console.log('[AuthProvider] Signing out...');
     await supabase.auth.signOut();
-    setSession(null);
-    isAuthInProgress.current = false;
-    setAuthAttempted(false);
+    globalSession = null;
+    globalAuthAttempted = false;
     queryClient.clear();
-    safeStorage.removeItem('streakfarm_ref_code');
   };
 
   return (

@@ -1,7 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useTelegram } from './useTelegram';
-import { useEffect } from 'react';
 
 export interface Profile {
   id: string;
@@ -35,36 +33,55 @@ export interface LeaderboardEntry {
   referral_count: number;
 }
 
+// Cache session to prevent repeated calls
+let cachedSession: { user?: { id: string } } | null = null;
+
 export function useProfile() {
-  const { user, isReady } = useTelegram();
   const queryClient = useQueryClient();
 
-  // For development, we'll use a mock auth session
+  // Get session once and cache it
   const { data: session } = useQuery({
     queryKey: ['session'],
     queryFn: async () => {
+      if (cachedSession) return cachedSession;
       const { data } = await supabase.auth.getSession();
+      cachedSession = data.session;
       return data.session;
     },
+    staleTime: Infinity, // Don't refetch session
+    cacheTime: Infinity,
   });
 
+  const userId = session?.user?.id;
+
+  // Fetch profile only when we have userId
   const { data: profile, isLoading, error } = useQuery({
-    queryKey: ['profile', session?.user?.id],
+    queryKey: ['profile', userId],
     queryFn: async () => {
-      if (!session?.user?.id) return null;
+      if (!userId) return null;
+      
+      console.log('[useProfile] Fetching profile for:', userId.slice(0, 8));
       
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('user_id', session.user.id)
+        .eq('user_id', userId)
         .single();
       
-      if (error) throw error;
+      if (error) {
+        console.error('[useProfile] Error:', error.message);
+        throw error;
+      }
+      
+      console.log('[useProfile] Profile fetched:', data?.username);
       return data as Profile;
     },
-    enabled: !!session?.user?.id,
+    enabled: !!userId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    retry: 1,
   });
 
+  // Fetch leaderboard entry
   const { data: leaderboardEntry } = useQuery({
     queryKey: ['leaderboard-entry', profile?.id],
     queryFn: async () => {
@@ -80,8 +97,10 @@ export function useProfile() {
       return data as LeaderboardEntry | null;
     },
     enabled: !!profile?.id,
+    staleTime: 5 * 60 * 1000,
   });
 
+  // Calculate multiplier
   const { data: totalMultiplier } = useQuery({
     queryKey: ['multiplier', profile?.id],
     queryFn: async () => {
@@ -94,22 +113,18 @@ export function useProfile() {
       return data as number;
     },
     enabled: !!profile?.id,
+    staleTime: 5 * 60 * 1000,
   });
 
-  // Only allow safe profile updates (non-game-critical fields)
+  // Update profile mutation
   const updateProfile = useMutation({
     mutationFn: async (updates: { wallet_address?: string | null; wallet_type?: string | null }) => {
       if (!profile?.id) throw new Error('No profile');
       
-      // Only allow wallet-related fields for client-side updates
       const safeUpdates: { wallet_address?: string | null; wallet_type?: string | null } = {};
       
-      if ('wallet_address' in updates) {
-        safeUpdates.wallet_address = updates.wallet_address;
-      }
-      if ('wallet_type' in updates) {
-        safeUpdates.wallet_type = updates.wallet_type;
-      }
+      if ('wallet_address' in updates) safeUpdates.wallet_address = updates.wallet_address;
+      if ('wallet_type' in updates) safeUpdates.wallet_type = updates.wallet_type;
       
       if (Object.keys(safeUpdates).length === 0) {
         throw new Error('No valid fields to update');
