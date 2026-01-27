@@ -202,8 +202,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // In Telegram with initData - try auth
     if (isTelegram && initData && !globalAuthAttempted) {
       console.log('[AuthProvider] Attempting Telegram auth...');
-      attemptTelegramLogin();
-      return;
+      // Small delay to ensure any previous operations complete
+      const timer = setTimeout(() => {
+        attemptTelegramLogin();
+      }, 100);
+      return () => clearTimeout(timer);
     }
 
     // Already attempted auth

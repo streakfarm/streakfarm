@@ -171,8 +171,20 @@ export function useTelegram() {
           hasUser: !!tg.initDataUnsafe?.user,
         });
 
-        // Use pre-initialized data if available
-        const rawInitData = window.TelegramWebAppInitData ?? tg.initData ?? "";
+        // Use pre-initialized data if available, otherwise get fresh from tg
+        let rawInitData = window.TelegramWebAppInitData || tg.initData || "";
+        
+        // If still no initData, try to construct from initDataUnsafe (fallback)
+        if (!rawInitData && tg.initDataUnsafe) {
+          const params = new URLSearchParams();
+          if (tg.initDataUnsafe.auth_date) params.set('auth_date', String(tg.initDataUnsafe.auth_date));
+          if (tg.initDataUnsafe.hash) params.set('hash', tg.initDataUnsafe.hash);
+          if (tg.initDataUnsafe.query_id) params.set('query_id', tg.initDataUnsafe.query_id);
+          if (tg.initDataUnsafe.user) params.set('user', JSON.stringify(tg.initDataUnsafe.user));
+          rawInitData = params.toString();
+          console.log('[useTelegram] Constructed initData from initDataUnsafe');
+        }
+        
         const userData = tg.initDataUnsafe?.user ?? null;
         const startParamData = tg.initDataUnsafe?.start_param;
 

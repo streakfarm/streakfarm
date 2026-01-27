@@ -237,11 +237,12 @@ serve(async (req) => {
       throw new Error("Failed to get or create user");
     }
 
-    // 3. Update the profile with Telegram user data
+    // 3. Upsert the profile with Telegram user data (create if not exists via trigger, update if exists)
     const fullName = `${tgUser.first_name} ${tgUser.last_name || ""}`.trim();
 
     try {
-      const { error: profileError } = await supabaseAdmin
+      // First try to update existing profile
+      const { error: updateError } = await supabaseAdmin
         .from('profiles')
         .update({
           telegram_id: tgUser.id,
@@ -253,9 +254,29 @@ serve(async (req) => {
         })
         .eq('user_id', user.id);
 
-      if (profileError) {
-        console.warn(`[${requestId}] DEBUG: Profile update warning:`, profileError.message);
-        // Don't throw - auth still succeeded, profile update is non-critical
+      if (updateError) {
+        console.warn(`[${requestId}] DEBUG: Profile update warning:`, updateError.message);
+        
+        // If update failed (profile might not exist yet), try insert
+        if (updateError.code === 'PGRST116' || updateError.message?.includes('0 rows')) {
+          console.log(`[${requestId}] DEBUG: Profile not found, creating new profile...`);
+          const { error: insertError } = await supabaseAdmin
+            .from('profiles')
+            .insert({
+              user_id: user.id,
+              telegram_id: tgUser.id,
+              username: tgUser.username || `user_${tgUser.id}`,
+              first_name: fullName,
+              avatar_url: tgUser.photo_url || null,
+              language_code: tgUser.language_code || 'en',
+            });
+          
+          if (insertError) {
+            console.warn(`[${requestId}] DEBUG: Profile insert warning:`, insertError.message);
+          } else {
+            console.log(`[${requestId}] DEBUG: Profile created successfully for user:`, user.id);
+          }
+        }
       } else {
         console.log(`[${requestId}] DEBUG: Profile updated successfully for user:`, user.id);
       }

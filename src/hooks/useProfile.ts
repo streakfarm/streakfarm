@@ -62,15 +62,22 @@ export function useProfile() {
       
       console.log('[useProfile] Fetching profile for:', userId.slice(0, 8));
       
+      // Use maybeSingle() instead of single() to handle case when profile doesn't exist yet
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
       
       if (error) {
         console.error('[useProfile] Error:', error.message);
         throw error;
+      }
+      
+      if (!data) {
+        console.log('[useProfile] Profile not found yet, will retry...');
+        // Return null to trigger retry
+        throw new Error('Profile not found');
       }
       
       console.log('[useProfile] Profile fetched:', data?.username);
@@ -78,7 +85,14 @@ export function useProfile() {
     },
     enabled: !!userId,
     staleTime: 5 * 60 * 1000, // 5 minutes
-    retry: 1,
+    retry: (failureCount, error: any) => {
+      // Retry up to 5 times if profile not found (race condition with trigger)
+      if (error?.message === 'Profile not found' && failureCount < 5) {
+        return true;
+      }
+      return false;
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * Math.pow(2, attemptIndex), 5000), // Exponential backoff
   });
 
   // Fetch leaderboard entry
