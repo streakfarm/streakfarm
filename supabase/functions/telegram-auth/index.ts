@@ -17,50 +17,53 @@ interface TelegramUser {
 }
 
 async function validateTelegramData(initData: string, botToken: string): Promise<TelegramUser | null> {
-  const params = new URLSearchParams(initData);
-  const hash = params.get("hash");
-  params.delete("hash");
+  try {
+    const params = new URLSearchParams(initData);
+    const hash = params.get("hash");
+    params.delete("hash");
 
-  const dataCheckArr: string[] = [];
-  params.forEach((value, key) => {
-    dataCheckArr.push(`${key}=${value}`);
-  });
-  dataCheckArr.sort();
-  const dataCheckString = dataCheckArr.join("\n");
+    const dataCheckArr: string[] = [];
+    params.forEach((value, key) => {
+      dataCheckArr.push(`${key}=${value}`);
+    });
+    dataCheckArr.sort();
+    const dataCheckString = dataCheckArr.join("\n");
 
-  const encoder = new TextEncoder();
-  
-  // Create secret key from bot token
-  const secretKeyData = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode("WebAppData"),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const secretKey = await crypto.subtle.sign("HMAC", secretKeyData, encoder.encode(botToken));
+    const encoder = new TextEncoder();
+    
+    const secretKeyData = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode("WebAppData"),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const secretKey = await crypto.subtle.sign("HMAC", secretKeyData, encoder.encode(botToken));
 
-  // Validate hash
-  const signatureKeyData = await crypto.subtle.importKey(
-    "raw",
-    secretKey,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const signature = await crypto.subtle.sign("HMAC", signatureKeyData, encoder.encode(dataCheckString));
-  
-  const calculatedHash = Array.from(new Uint8Array(signature))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+    const signatureKeyData = await crypto.subtle.importKey(
+      "raw",
+      secretKey,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const signature = await crypto.subtle.sign("HMAC", signatureKeyData, encoder.encode(dataCheckString));
+    
+    const calculatedHash = Array.from(new Uint8Array(signature))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
 
-  if (calculatedHash !== hash) {
-    console.error("Hash mismatch!");
+    if (calculatedHash !== hash) {
+      console.error("DEBUG: Hash mismatch!");
+      return null;
+    }
+
+    const userJson = params.get("user");
+    return userJson ? JSON.parse(userJson) : null;
+  } catch (e) {
+    console.error("DEBUG: Validation error:", e.message);
     return null;
   }
-
-  const userJson = params.get("user");
-  return userJson ? JSON.parse(userJson) : null;
 }
 
 serve(async (req) => {
@@ -71,12 +74,13 @@ serve(async (req) => {
   try {
     const { initData } = await req.json();
     const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     
-    if (!botToken) {
-      throw new Error("TELEGRAM_BOT_TOKEN is not set");
+    if (!botToken || !supabaseUrl || !serviceRoleKey) {
+      throw new Error("Missing environment variables");
     }
 
-    // 1. Validate Telegram Data
     const tgUser = await validateTelegramData(initData, botToken);
     if (!tgUser) {
       return new Response(JSON.stringify({ error: "Invalid Telegram data" }), {
@@ -85,26 +89,22 @@ serve(async (req) => {
       });
     }
 
-    // 2. Initialize Supabase Admin
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
-    // 3. Official Flow: Check if user exists or create new
+    // Use a deterministic email and password based on Telegram ID
     const email = `tg_${tgUser.id}@telegram.user`;
     const password = `tg_pass_${tgUser.id}_${botToken.substring(0, 10)}`;
 
-    // Try to get user by email
-    const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
-    const existingUser = users.find(u => u.email === email);
+    console.log(`DEBUG: Processing user ${tgUser.id} (${tgUser.username || 'no-username'})`);
 
-    let user;
-    if (existingUser) {
-      user = existingUser;
-      console.log("User exists, logging in...");
-    } else {
-      console.log("Creating new user...");
+    // 1. Check if user exists in auth.users
+    const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+    if (listError) throw listError;
+    
+    let user = users.find(u => u.email === email);
+
+    if (!user) {
+      console.log("DEBUG: Creating new auth user...");
       const { data: { user: newUser }, error: createError } = await supabaseAdmin.auth.admin.createUser({
         email,
         password,
@@ -119,7 +119,23 @@ serve(async (req) => {
       user = newUser;
     }
 
-    // 4. Generate Session for the user
+    // 2. Ensure user exists in 'profiles' table (or whatever your user table is named)
+    // Most templates use a 'profiles' or 'users' table in the public schema
+    const { error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .upsert({
+        id: user.id,
+        username: tgUser.username || `user_${tgUser.id}`,
+        full_name: `${tgUser.first_name} ${tgUser.last_name || ""}`.trim(),
+        avatar_url: null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+
+    if (profileError) {
+      console.warn("DEBUG: Profile upsert error (might not have a profiles table):", profileError.message);
+    }
+
+    // 3. Sign in to get a session
     const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.signInWithPassword({
       email,
       password,
@@ -127,13 +143,14 @@ serve(async (req) => {
 
     if (sessionError) throw sessionError;
 
+    console.log("DEBUG: Auth successful for user:", user.id);
     return new Response(JSON.stringify(sessionData), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
   } catch (error: any) {
-    console.error("Auth Error:", error.message);
+    console.error("DEBUG: Auth Error:", error.message);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
