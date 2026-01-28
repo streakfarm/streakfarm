@@ -149,7 +149,7 @@ export function useAdmin() {
           sort_order: task.sort_order,
         })
         .select()
-        .maybeSingle();
+        .single();
       
       if (error) throw error;
       return data;
@@ -183,7 +183,7 @@ export function useAdmin() {
         })
         .eq('id', id)
         .select()
-        .maybeSingle();
+        .single();
       
       if (error) throw error;
       return data;
@@ -231,7 +231,7 @@ export function useAdmin() {
           available_until: badge.available_until,
         })
         .select()
-        .maybeSingle();
+        .single();
       
       if (error) throw error;
       return data;
@@ -264,7 +264,7 @@ export function useAdmin() {
         })
         .eq('id', id)
         .select()
-        .maybeSingle();
+        .single();
       
       if (error) throw error;
       return data;
@@ -301,7 +301,7 @@ export function useAdmin() {
           updated_by: profile?.id 
         })
         .select()
-        .maybeSingle();
+        .single();
       
       if (error) throw error;
       return data;
@@ -321,7 +321,7 @@ export function useAdmin() {
           badge_id: badgeId,
         })
         .select()
-        .maybeSingle();
+        .single();
       
       if (error) throw error;
       return data;
