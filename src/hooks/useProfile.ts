@@ -109,7 +109,7 @@ export function useProfile() {
         .update(updates)
         .eq('id', profile.id)
         .select()
-        .single();
+        .maybeSingle();
       
       if (error) throw error;
       return data;

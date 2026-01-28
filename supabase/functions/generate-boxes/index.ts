@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
       .from("admin_config")
       .select("value")
       .eq("id", "box_settings")
-      .single();
+      .maybeSingle();
 
     const config: BoxConfig = configData?.value 
       ? { ...DEFAULT_CONFIG, ...(configData.value as Partial<BoxConfig>) }

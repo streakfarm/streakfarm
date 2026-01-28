@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
       .from("profiles")
       .select("id, raw_points, streak_current, streak_best, last_checkin")
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
 
     if (profileError || !profile) {
       return new Response(
@@ -178,7 +178,7 @@ Deno.serve(async (req) => {
           .select("id")
           .eq("user_id", profile.id)
           .eq("badge_id", sb.badge_id)
-          .single();
+          .maybeSingle();
 
         if (!existingBadge) {
           // Award badge

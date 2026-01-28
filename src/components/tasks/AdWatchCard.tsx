@@ -33,7 +33,7 @@ export function AdWatchCard() {
         .from('admin_config')
         .select('value')
         .eq('id', 'ad_settings')
-        .single();
+        .maybeSingle();
       
       if (adData?.value) {
         const value = adData.value as Record<string, unknown>;
@@ -48,7 +48,7 @@ export function AdWatchCard() {
         .from('admin_config')
         .select('value')
         .eq('id', 'game_config')
-        .single();
+        .maybeSingle();
       
       if (gameData?.value) {
         const value = gameData.value as Record<string, unknown>;

@@ -53,6 +53,7 @@ serve(async (req) => {
     const calculatedHash = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, "0")).join("");
 
     if (calculatedHash !== hash) {
+      console.error('Signature mismatch:', { calculatedHash, hash });
       return new Response(JSON.stringify({ error: "Invalid signature" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -74,21 +75,36 @@ serve(async (req) => {
     const email = `tg_${tgUser.id}@telegram.user`;
     const password = `tg_pass_${tgUser.id}_${botToken.slice(0, 10)}`;
 
-    const { data: { users } } = await supabaseAdmin.auth.admin.listUsers();
+    // Try to find user by email
+    const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+    if (listError) throw listError;
+    
     let user = users.find(u => u.email === email);
 
     if (!user) {
-      const { data: { user: newUser } } = await supabaseAdmin.auth.admin.createUser({
+      console.log('Creating new user for:', email);
+      const { data: { user: newUser }, error: createError } = await supabaseAdmin.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
         user_metadata: { telegram_id: tgUser.id, username: tgUser.username },
       });
-      user = newUser;
+      
+      if (createError) {
+        // Handle race condition if user was created between list and create
+        if (createError.message.includes('already exists')) {
+          const { data: { users: retryUsers } } = await supabaseAdmin.auth.admin.listUsers();
+          user = retryUsers.find(u => u.email === email);
+        } else {
+          throw createError;
+        }
+      } else {
+        user = newUser;
+      }
     }
 
     if (!user) {
-      throw new Error("Failed to create user");
+      throw new Error("Failed to create or find user");
     }
 
     // Create/update profile using service role (bypasses RLS)
@@ -105,7 +121,7 @@ serve(async (req) => {
       }, { onConflict: 'user_id' });
 
     if (profileError) {
-      console.error('Profile error:', profileError);
+      console.error('Profile upsert error:', profileError);
     }
 
     // Sign in

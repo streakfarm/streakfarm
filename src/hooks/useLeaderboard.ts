@@ -76,9 +76,9 @@ export function useLeaderboard(type: LeaderboardType = 'all_time', limit = 100) 
         .from('leaderboards')
         .select('*')
         .eq('user_id', profile.id)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') throw error;
+      if (error) throw error;
       return data;
     },
     enabled: !!profile?.id,

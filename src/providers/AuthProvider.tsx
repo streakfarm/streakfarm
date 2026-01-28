@@ -117,7 +117,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ initData }),
       });
 
-      const result = await response.json();
+      let result;
+      const text = await response.text();
+      try {
+        result = JSON.parse(text);
+      } catch (e) {
+        console.error('[Auth] Failed to parse response:', text);
+        throw new Error('Invalid server response');
+      }
+
       console.log('[Auth] Response:', response.status, result.error || 'success');
 
       if (!response.ok) {

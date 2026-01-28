@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
       .from("profiles")
       .select("id, wallet_address, raw_points")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
     if (profileError || !profile) {
       return new Response(
@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
       .select("id")
       .eq("user_id", profile.id)
       .eq("badge_id", "ton-holder")
-      .single();
+      .maybeSingle();
 
     if (existingBadge) {
       return new Response(
@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
       .from("badges")
       .select("*")
       .eq("id", "ton-holder")
-      .single();
+      .maybeSingle();
 
     if (!badge) {
       // Create the wallet badge if it doesn't exist
@@ -107,7 +107,7 @@ Deno.serve(async (req) => {
           can_convert_to_nft: true,
         })
         .select()
-        .single();
+        .maybeSingle();
 
       if (createError) {
         console.error("Error creating badge:", createError);
@@ -143,7 +143,7 @@ Deno.serve(async (req) => {
       .from("admin_config")
       .select("value")
       .eq("id", "game_config")
-      .single();
+      .maybeSingle();
 
     if (config?.value) {
       const gameConfig = config.value as Record<string, unknown>;

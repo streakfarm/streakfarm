@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
       .from("profiles")
       .select("id, raw_points, total_tasks_completed, wallet_address")
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
 
     if (profileError || !profile) {
       return new Response(
@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
       .select("*")
       .eq("id", taskId)
       .eq("status", "active")
-      .single();
+      .maybeSingle();
 
     if (taskError || !task) {
       return new Response(

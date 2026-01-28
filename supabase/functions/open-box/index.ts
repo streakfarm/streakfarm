@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
       .from("profiles")
       .select("id, raw_points, total_boxes_opened")
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
 
     if (profileError || !profile) {
       return new Response(
@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
       .select("*")
       .eq("id", boxId)
       .eq("user_id", profile.id)
-      .single();
+      .maybeSingle();
 
     if (boxError || !box) {
       return new Response(
