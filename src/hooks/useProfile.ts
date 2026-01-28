@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useTelegram } from './useTelegram';
+import { useEffect } from 'react';
 
 export interface Profile {
   id: string;
@@ -22,94 +24,103 @@ export interface Profile {
   created_at: string;
 }
 
+export interface LeaderboardEntry {
+  id: string;
+  user_id: string;
+  points_all_time: number;
+  points_weekly: number;
+  rank_all_time: number | null;
+  rank_weekly: number | null;
+  badge_count: number;
+  referral_count: number;
+}
+
 export function useProfile() {
+  const { user, isReady } = useTelegram();
   const queryClient = useQueryClient();
 
-  // Get session
+  // For development, we'll use a mock auth session
   const { data: session } = useQuery({
     queryKey: ['session'],
     queryFn: async () => {
       const { data } = await supabase.auth.getSession();
       return data.session;
     },
-    staleTime: Infinity,
   });
 
-  const userId = session?.user?.id;
-
-  // Fetch profile
-  const { 
-    data: profile, 
-    isLoading, 
-    error 
-  } = useQuery({
-    queryKey: ['profile', userId],
+  const { data: profile, isLoading, error } = useQuery({
+    queryKey: ['profile', session?.user?.id],
     queryFn: async () => {
-      if (!userId) return null;
+      if (!session?.user?.id) return null;
       
-      console.log('[useProfile] Fetching profile for:', userId.slice(0, 8));
-      
-      // Try to get profile - use maybeSingle to handle case when profile doesn't exist
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
+        .eq('user_id', session.user.id)
+        .single();
       
-      if (error) {
-        console.error('[useProfile] Error fetching profile:', error.message);
-        throw error;
-      }
-      
-      if (data) {
-        console.log('[useProfile] Profile found:', data.username);
-        return data as Profile;
-      }
-      
-      // Profile doesn't exist - try to create it
-      console.log('[useProfile] Profile not found, creating...');
-      
-      const { data: newProfile, error: createError } = await supabase
-        .from('profiles')
-        .insert({ user_id: userId })
-        .select()
-        .maybeSingle();
-      
-      if (createError) {
-        // If unique violation, profile was created by trigger - fetch again
-        if (createError.code === '23505') {
-          console.log('[useProfile] Profile exists (created by trigger), fetching...');
-          const { data: existingProfile, error: fetchError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('user_id', userId)
-            .maybeSingle();
-          
-          if (fetchError) throw fetchError;
-          return existingProfile as Profile;
-        }
-        throw createError;
-      }
-      
-      console.log('[useProfile] Profile created:', newProfile?.username);
-      return newProfile as Profile;
+      if (error) throw error;
+      return data as Profile;
     },
-    enabled: !!userId,
-    retry: 3,
-    retryDelay: 1000,
+    enabled: !!session?.user?.id,
   });
 
-  // Update profile
+  const { data: leaderboardEntry } = useQuery({
+    queryKey: ['leaderboard-entry', profile?.id],
+    queryFn: async () => {
+      if (!profile?.id) return null;
+      
+      const { data, error } = await supabase
+        .from('leaderboards')
+        .select('*')
+        .eq('user_id', profile.id)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      return data as LeaderboardEntry | null;
+    },
+    enabled: !!profile?.id,
+  });
+
+  const { data: totalMultiplier } = useQuery({
+    queryKey: ['multiplier', profile?.id],
+    queryFn: async () => {
+      if (!profile?.id) return 1;
+      
+      const { data, error } = await supabase
+        .rpc('calculate_user_multiplier', { _profile_id: profile.id });
+      
+      if (error) throw error;
+      return data as number;
+    },
+    enabled: !!profile?.id,
+  });
+
+  // Only allow safe profile updates (non-game-critical fields)
   const updateProfile = useMutation({
-    mutationFn: async (updates: Partial<Profile>) => {
+    mutationFn: async (updates: { wallet_address?: string | null; wallet_type?: string | null }) => {
       if (!profile?.id) throw new Error('No profile');
+      
+      // Only allow wallet-related fields for client-side updates
+      const safeUpdates: { wallet_address?: string | null; wallet_type?: string | null } = {};
+      
+      if ('wallet_address' in updates) {
+        safeUpdates.wallet_address = updates.wallet_address;
+      }
+      if ('wallet_type' in updates) {
+        safeUpdates.wallet_type = updates.wallet_type;
+      }
+      
+      if (Object.keys(safeUpdates).length === 0) {
+        throw new Error('No valid fields to update');
+      }
       
       const { data, error } = await supabase
         .from('profiles')
-        .update(updates)
+        .update(safeUpdates)
         .eq('id', profile.id)
         .select()
-        .maybeSingle();
+        .single();
       
       if (error) throw error;
       return data;
@@ -121,6 +132,8 @@ export function useProfile() {
 
   return {
     profile,
+    leaderboardEntry,
+    totalMultiplier: totalMultiplier || 1,
     isLoading,
     error,
     updateProfile,
