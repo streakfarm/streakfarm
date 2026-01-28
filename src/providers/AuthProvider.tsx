@@ -63,26 +63,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, currentSession) => {
         console.log('[Auth] Event:', event, 'Session:', !!currentSession);
-        setSession(currentSession);
         
-        if (event === 'SIGNED_IN') {
+        if (currentSession) {
+          setSession(currentSession);
           setIsLoading(false);
           setAuthError(null);
-        } else if (event === 'SIGNED_OUT') {
-          clearAuthAttempted();
-          setIsLoading(false);
+        } else {
+          setSession(null);
+          if (event === 'SIGNED_OUT') {
+            clearAuthAttempted();
+            setIsLoading(false);
+          }
         }
       }
     );
 
     // Check existing session
     supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
-      console.log('[Auth] Existing session:', !!existingSession);
-      setSession(existingSession);
-      setHasCheckedSession(true);
+      console.log('[Auth] Existing session check:', !!existingSession);
       if (existingSession) {
+        setSession(existingSession);
         setIsLoading(false);
       }
+      setHasCheckedSession(true);
+    }).catch(err => {
+      console.error('[Auth] Session check error:', err);
+      setHasCheckedSession(true);
     });
 
     return () => subscription.unsubscribe();
@@ -90,13 +96,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Attempt Telegram login
   const attemptTelegramLogin = useCallback(async () => {
+    // Multiple guards to prevent concurrent or redundant attempts
     if (authInProgress.current) return;
     if (wasAuthAttempted()) return;
     if (!isReady || !isTelegram || !initData) return;
+    if (session) return;
 
     authInProgress.current = true;
     markAuthAttempted();
     setAuthError(null);
+    setIsLoading(true);
 
     try {
       console.log('[Auth] Attempting Telegram login...');
@@ -105,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
       if (!supabaseUrl || !publishableKey) {
-        throw new Error('Missing Supabase config');
+        throw new Error('Missing Supabase configuration');
       }
 
       const response = await fetch(`${supabaseUrl}/functions/v1/telegram-auth`, {
@@ -154,15 +163,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       authInProgress.current = false;
     }
-  }, [isReady, isTelegram, initData]);
+  }, [isReady, isTelegram, initData, session]);
 
   // Handle auth flow
   useEffect(() => {
+    // Only proceed once we've checked for an existing Supabase session
     if (!hasCheckedSession) return;
-    if (session) return; // Already logged in
-    if (!isReady) return; // Wait for Telegram init
+    
+    // If already authenticated, we're done
+    if (session) {
+      setIsLoading(false);
+      return;
+    }
+    
+    // Wait for Telegram initialization
+    if (!isReady) return;
 
-    // Not in Telegram - show prompt
+    // Not in Telegram - stop loading and allow manual interaction if needed
     if (!isTelegram) {
       setIsLoading(false);
       return;
@@ -175,22 +192,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Try login
-    if (!wasAuthAttempted()) {
+    // Try login if not already attempted
+    if (!wasAuthAttempted() && !authInProgress.current) {
       attemptTelegramLogin();
     } else if (!authInProgress.current) {
-      // Already attempted and failed
+      // Already attempted and failed, or in progress
       setIsLoading(false);
     }
   }, [hasCheckedSession, session, isReady, isTelegram, initData, attemptTelegramLogin]);
 
-  // Safety timeout - stop loading after 10s
+  // Safety timeout - stop loading after 15s to prevent permanent hang
   useEffect(() => {
     if (!isLoading) return;
     const timeout = setTimeout(() => {
-      console.log('[Auth] Safety timeout');
+      console.log('[Auth] Safety timeout reached');
       setIsLoading(false);
-    }, 10000);
+    }, 15000);
     return () => clearTimeout(timeout);
   }, [isLoading]);
 
@@ -204,6 +221,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     await supabase.auth.signOut();
     clearAuthAttempted();
+    setSession(null);
     queryClient.clear();
   };
 

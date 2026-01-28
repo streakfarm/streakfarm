@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 
 interface TelegramUser {
   id: number;
@@ -24,6 +24,10 @@ interface TelegramWebApp {
   openTelegramLink: (url: string) => void;
   version: string;
   platform: string;
+  HapticFeedback?: {
+    notificationOccurred: (type: 'success' | 'warning' | 'error') => void;
+    impactOccurred: (style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft') => void;
+  };
 }
 
 declare global {
@@ -39,51 +43,68 @@ export function useTelegram() {
     isReady: false,
     initData: "",
     startParam: undefined as string | undefined,
+    error: null as string | null,
   });
 
+  const initialized = useRef(false);
+
   useEffect(() => {
+    if (initialized.current) return;
+
     const init = () => {
+      if (initialized.current) return;
+      
       const tg = window.Telegram?.WebApp;
 
       if (!tg) {
         console.log('[Telegram] Not in Telegram');
+        initialized.current = true;
         setState({
           user: null,
           isTelegram: false,
           isReady: true,
           initData: "",
           startParam: undefined,
+          error: null,
         });
         return;
       }
 
-      // Call ready() as per Telegram docs
-      tg.ready();
-      tg.expand?.();
+      try {
+        // Call ready() and expand() only once
+        tg.ready();
+        tg.expand?.();
+        console.log('[Telegram] WebApp ready() and expand() called successfully');
 
-      const initData = tg.initData || "";
-      const user = tg.initDataUnsafe?.user || null;
-      const startParam = tg.initDataUnsafe?.start_param;
+        const initData = tg.initData || "";
+        const user = tg.initDataUnsafe?.user || null;
+        const startParam = tg.initDataUnsafe?.start_param;
 
-      console.log('[Telegram] Initialized:', {
-        version: tg.version,
-        hasInitData: !!initData,
-        hasUser: !!user,
-      });
+        console.log('[Telegram] Initialized:', {
+          version: tg.version,
+          hasInitData: !!initData,
+          hasUser: !!user,
+        });
 
-      setState({
-        user,
-        isTelegram: true,
-        isReady: true,
-        initData,
-        startParam,
-      });
+        initialized.current = true;
+        setState({
+          user,
+          isTelegram: true,
+          isReady: true,
+          initData,
+          startParam,
+          error: null,
+        });
 
-      // Save ref code
-      if (startParam) {
-        try {
-          localStorage.setItem('sf_ref', startParam);
-        } catch {}
+        // Save ref code
+        if (startParam) {
+          try {
+            localStorage.setItem('sf_ref', startParam);
+          } catch {}
+        }
+      } catch (err: any) {
+        console.error('[Telegram] Initialization error:', err);
+        setState(s => ({ ...s, isReady: true, error: err.message }));
       }
     };
 
@@ -100,9 +121,11 @@ export function useTelegram() {
         } else if (checks > 30) {
           clearInterval(interval);
           console.log('[Telegram] Timeout');
+          initialized.current = true;
           setState(s => ({ ...s, isReady: true }));
         }
       }, 100);
+      return () => clearInterval(interval);
     }
   }, []);
 

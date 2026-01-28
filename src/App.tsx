@@ -37,20 +37,7 @@ function AppContent() {
     hasSession: !!session
   });
 
-  // Telegram WebApp setup
-  useEffect(() => {
-    if (window.Telegram?.WebApp) {
-      try {
-        window.Telegram.WebApp.ready();
-        window.Telegram.WebApp.expand();
-        console.log('[App] Telegram WebApp ready() called');
-      } catch (e) {
-        console.warn('[App] Telegram setup error:', e);
-      }
-    }
-  }, []);
-
-  // Triple-tap for debug (easier than double-tap)
+  // Triple-tap for debug
   useEffect(() => {
     let tapCount = 0;
     let lastTapTime = 0;
