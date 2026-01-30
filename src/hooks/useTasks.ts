@@ -1,7 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from './useProfile';
-import { useCallback, useMemo } from 'react';
 
 export interface Task {
   id: string;
@@ -29,19 +28,11 @@ export interface TaskCompletion {
   is_verified: boolean | null;
 }
 
-// Cache configuration
-const TASKS_CACHE_TIME = 5 * 60 * 1000; // 5 minutes
-const STALE_TIME = 30 * 1000; // 30 seconds
-
 export function useTasks() {
   const { profile } = useProfile();
   const queryClient = useQueryClient();
 
-  // Get all active tasks - cached as they don't change often
-  const { 
-    data: tasks = [], 
-    isLoading: tasksLoading 
-  } = useQuery({
+  const { data: tasks = [], isLoading: tasksLoading } = useQuery({
     queryKey: ['tasks'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -53,16 +44,9 @@ export function useTasks() {
       if (error) throw error;
       return data as Task[];
     },
-    staleTime: STALE_TIME * 2, // Tasks change rarely
-    gcTime: TASKS_CACHE_TIME,
-    refetchOnWindowFocus: false,
   });
 
-  // Get user's task completions
-  const { 
-    data: completions = [], 
-    isLoading: completionsLoading 
-  } = useQuery({
+  const { data: completions = [], isLoading: completionsLoading } = useQuery({
     queryKey: ['task-completions', profile?.id],
     queryFn: async () => {
       if (!profile?.id) return [];
@@ -77,12 +61,8 @@ export function useTasks() {
       return data as TaskCompletion[];
     },
     enabled: !!profile?.id,
-    staleTime: STALE_TIME,
-    gcTime: TASKS_CACHE_TIME,
-    refetchOnWindowFocus: false,
   });
 
-  // Complete a task
   const completeTask = useMutation({
     mutationFn: async ({ taskId, verificationData }: { taskId: string; verificationData?: Record<string, unknown> }) => {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -112,15 +92,12 @@ export function useTasks() {
 
       return result;
     },
-    onSuccess: (_, variables) => {
-      // Optimistically update completions
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['task-completions'] });
       queryClient.invalidateQueries({ queryKey: ['profile'] });
-      queryClient.invalidateQueries({ queryKey: ['badges'] });
     },
   });
 
-  // Daily check-in mutation
   const dailyCheckin = useMutation({
     mutationFn: async () => {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -153,12 +130,11 @@ export function useTasks() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] });
       queryClient.invalidateQueries({ queryKey: ['badges'] });
-      queryClient.invalidateQueries({ queryKey: ['task-completions'] });
     },
   });
 
-  // Memoized helper to check task completion status
-  const getTaskStatus = useCallback((taskId: string) => {
+  // Helper to check task completion status
+  const getTaskStatus = (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
     const taskCompletions = completions.filter(c => c.task_id === taskId);
 
@@ -186,28 +162,26 @@ export function useTasks() {
     }
 
     return { completed: false, canComplete: true, nextAvailable: null };
-  }, [tasks, completions]);
+  };
 
-  // Memoized grouped tasks
-  const tasksByType = useMemo(() => ({
+  // Group tasks by type
+  const tasksByType = {
     daily: tasks.filter(t => t.task_type === 'daily'),
     social: tasks.filter(t => t.task_type === 'social'),
     referral: tasks.filter(t => t.task_type === 'referral'),
     wallet: tasks.filter(t => t.task_type === 'wallet'),
     onetime: tasks.filter(t => t.task_type === 'onetime'),
-  }), [tasks]);
+  };
 
-  // Memoized set of completed task IDs
-  const completedTaskIds = useMemo(() => {
-    return new Set(
-      tasks
-        .filter(t => {
-          const status = getTaskStatus(t.id);
-          return status.completed;
-        })
-        .map(t => t.id)
-    );
-  }, [tasks, getTaskStatus]);
+  // Set of completed task IDs for quick lookup
+  const completedTaskIds = new Set(
+    tasks
+      .filter(t => {
+        const status = getTaskStatus(t.id);
+        return status.completed;
+      })
+      .map(t => t.id)
+  );
 
   return {
     tasks,

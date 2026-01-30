@@ -28,18 +28,10 @@ export interface UserBadge {
   badge?: Badge;
 }
 
-// Cache configuration
-const BADGES_CACHE_TIME = 10 * 60 * 1000; // 10 minutes - badges don't change often
-const STALE_TIME = 60 * 1000; // 1 minute
-
 export function useBadges() {
   const { profile } = useProfile();
 
-  // Get all active badges - cached heavily as they don't change often
-  const { 
-    data: allBadges = [], 
-    isLoading: badgesLoading 
-  } = useQuery({
+  const { data: allBadges = [], isLoading: badgesLoading } = useQuery({
     queryKey: ['badges'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -51,17 +43,9 @@ export function useBadges() {
       if (error) throw error;
       return data as Badge[];
     },
-    staleTime: STALE_TIME * 5, // Badges change rarely
-    gcTime: BADGES_CACHE_TIME,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false, // Don't refetch on mount - badges are static
   });
 
-  // Get user's badges
-  const { 
-    data: userBadges = [], 
-    isLoading: userBadgesLoading 
-  } = useQuery({
+  const { data: userBadges = [], isLoading: userBadgesLoading } = useQuery({
     queryKey: ['user-badges', profile?.id],
     queryFn: async () => {
       if (!profile?.id) return [];
@@ -79,12 +63,8 @@ export function useBadges() {
       return data as (UserBadge & { badge: Badge })[];
     },
     enabled: !!profile?.id,
-    staleTime: STALE_TIME,
-    gcTime: BADGES_CACHE_TIME,
-    refetchOnWindowFocus: false,
   });
 
-  // Memoized computed values
   const ownedBadgeIds = new Set(userBadges.map(ub => ub.badge_id));
   
   const ownedBadges = userBadges.map(ub => ({
@@ -95,13 +75,10 @@ export function useBadges() {
 
   const availableBadges = allBadges.filter(badge => !ownedBadgeIds.has(badge.id));
 
-  // Calculate total multiplier from badges
   const totalMultiplier = userBadges.reduce((sum, ub) => {
-    const badgeMultiplier = ub.badge?.multiplier || 1;
-    return sum + (badgeMultiplier - 1); // Add the bonus portion only
+    return sum + (ub.badge?.multiplier || 0) - 1; // Subtract 1 because multipliers are like 1.2x, 1.5x
   }, 1);
 
-  // Group badges by category
   const badgesByCategory = {
     streak: allBadges.filter(b => b.badge_category === 'streak'),
     achievement: allBadges.filter(b => b.badge_category === 'achievement'),
