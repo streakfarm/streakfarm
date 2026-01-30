@@ -32,7 +32,7 @@ export function AnimatedCounter({
   });
 
   useEffect(() => {
-    spring.set(value);
+    spring.set(value || 0);
   }, [spring, value]);
 
   return (
@@ -47,9 +47,10 @@ export function AnimatedCounter({
 // Points counter with formatting
 export function PointsCounter({ value, className }: { value: number; className?: string }) {
   const formatPoints = (num: number) => {
-    if (num >= 1000000) return `${(num / 1000000).toFixed(2)}M`;
-    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
-    return num.toLocaleString();
+    const safeNum = num || 0;
+    if (safeNum >= 1000000) return `${(safeNum / 1000000).toFixed(2)}M`;
+    if (safeNum >= 1000) return `${(safeNum / 1000).toFixed(1)}K`;
+    return safeNum.toLocaleString();
   };
 
   return (
@@ -66,7 +67,7 @@ export function StreakCounter({ value, className }: { value: number; className?:
   return (
     <motion.div
       className={cn('flex items-center gap-1', className)}
-      animate={value > 0 ? { scale: [1, 1.1, 1] } : {}}
+      animate={(value || 0) > 0 ? { scale: [1, 1.1, 1] } : {}}
       transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 2 }}
     >
       <motion.span
@@ -113,7 +114,7 @@ export function MultiplierBadge({ value, className }: { value: number; className
       >
         ✨
       </motion.span>
-      <span className="font-bold text-gradient-secondary">{value.toFixed(1)}×</span>
+      <span className="font-bold text-gradient-secondary">{(value || 0).toFixed(1)}×</span>
     </motion.div>
   );
 }

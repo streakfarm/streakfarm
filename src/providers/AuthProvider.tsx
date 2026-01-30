@@ -31,11 +31,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
-  const { initData, isReady, isTelegram, hapticFeedback } = useTelegram();
+  const { initData, isReady, isTelegram, hapticFeedback, startParam } = useTelegram();
   const queryClient = useQueryClient();
   
   // Use a ref to ensure we only attempt login ONCE per session/mount
   const loginAttempted = useRef(false);
+  const lastTelegramIdRef = useRef<number | null>(null);
 
   // 1. Listen for Auth State Changes
   useEffect(() => {
@@ -58,16 +59,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 2. The Official Auto-Login Flow
+  // 2. The Official Auto-Login Flow with Referral Support
   const performAutoLogin = useCallback(async () => {
-    if (loginAttempted.current || session) return;
-    
     if (!isTelegram || !initData) {
       console.log("Not in Telegram environment. Skipping auto-login.");
       setIsLoading(false);
       return;
     }
 
+    // Extract Telegram user ID from initData
+    const params = new URLSearchParams(initData);
+    const userJson = params.get("user");
+    const telegramUser = userJson ? JSON.parse(userJson) : null;
+    const currentTelegramId = telegramUser?.id;
+
+    if (!currentTelegramId) {
+      console.log("No Telegram user ID found");
+      setIsLoading(false);
+      return;
+    }
+
+    // Check if this is a different user (referral link case)
+    if (lastTelegramIdRef.current && lastTelegramIdRef.current !== currentTelegramId) {
+      console.log("Different Telegram user detected. Logging out previous session...");
+      // Force logout the previous session
+      await supabase.auth.signOut();
+      loginAttempted.current = false;
+      queryClient.clear();
+    }
+
+    lastTelegramIdRef.current = currentTelegramId;
+
+    // If already logged in and it's the same user, skip
+    if (session && session.user?.user_metadata?.telegram_id === currentTelegramId) {
+      console.log("Already logged in as this user");
+      setIsLoading(false);
+      return;
+    }
+
+    if (loginAttempted.current) {
+      console.log("Login already attempted");
+      return;
+    }
+    
     loginAttempted.current = true;
     setIsLoading(true);
     console.log("Starting Official Telegram Auto-Login...");
@@ -112,22 +146,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [isTelegram, initData, session, isReady, hapticFeedback]);
+  }, [isTelegram, initData, session, hapticFeedback, queryClient]);
 
   // Trigger login when Telegram is ready
   useEffect(() => {
     if (isReady) {
-      if (isTelegram && !session) {
-        performAutoLogin();
-      } else {
-        setIsLoading(false);
-      }
+      performAutoLogin();
     }
-  }, [isReady, isTelegram, session, performAutoLogin]);
+  }, [isReady, performAutoLogin]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
+    loginAttempted.current = false;
+    lastTelegramIdRef.current = null;
     queryClient.clear();
   };
 

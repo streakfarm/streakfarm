@@ -136,7 +136,7 @@ export default function Profile() {
               <div className="flex items-center gap-2 mt-3 flex-wrap">
                 <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-primary/20 text-primary text-sm font-semibold">
                   <Sparkles className="w-4 h-4" />
-                  {totalMultiplier.toFixed(1)}× Multiplier
+                  {(totalMultiplier || 1).toFixed(1)}× Multiplier
                 </div>
                 {isConnected && (
                   <motion.div
@@ -264,7 +264,7 @@ export default function Profile() {
                                 ? "bg-primary/20 text-primary" 
                                 : "bg-muted text-muted-foreground"
                             )}>
-                              {badge.multiplier.toFixed(1)}×
+                              {(badge.multiplier || 0).toFixed(1)}×
                             </span>
                             <span className={cn(
                               "text-[10px] uppercase",
@@ -277,7 +277,7 @@ export default function Profile() {
                       </div>
                       
                       {isOwned && (
-                        <motion.div 
+                        <motion.div
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
                           className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center"
@@ -320,7 +320,7 @@ export default function Profile() {
                     <span className="text-muted-foreground">From Badges</span>
                   </div>
                   <span className="font-medium text-primary">
-                    +{((totalMultiplier - 1) > 0 ? (totalMultiplier - 1).toFixed(1) : '0.0')}×
+                    +{((totalMultiplier || 1) - 1 > 0 ? ((totalMultiplier || 1) - 1).toFixed(1) : '0.0')}×
                   </span>
                 </div>
                 <div className="flex items-center justify-between py-2 border-b border-border">
@@ -358,7 +358,7 @@ export default function Profile() {
                     animate={{ scale: 1 }}
                     className="text-3xl font-bold text-primary"
                   >
-                    {totalMultiplier.toFixed(1)}×
+                    {(totalMultiplier || 1).toFixed(1)}×
                   </motion.span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">

@@ -51,14 +51,22 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Get user's profile
+    // Get user's profile - use id instead of user_id
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select("id, raw_points, total_tasks_completed, wallet_address")
-      .eq("user_id", userId)
+      .eq("id", userId)
       .maybeSingle();
 
-    if (profileError || !profile) {
+    if (profileError) {
+      console.error("Profile error:", profileError);
+      return new Response(
+        JSON.stringify({ error: "Failed to fetch profile" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!profile) {
       return new Response(
         JSON.stringify({ error: "Profile not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
