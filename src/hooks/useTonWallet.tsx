@@ -2,6 +2,7 @@ import { TonConnectUIProvider, useTonConnectUI, useTonWallet, TonConnectButton }
 import { createContext, useContext, useCallback, useEffect, useState, ReactNode } from 'react';
 import { useProfile } from '@/hooks/useProfile';
 import { useTelegram } from '@/hooks/useTelegram';
+import { useAuth } from '@/providers/AuthProvider';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -39,12 +40,34 @@ function TonWalletInner({ children }: { children: ReactNode }) {
   const [tonConnectUI] = useTonConnectUI();
   const wallet = useTonWallet();
   const { updateProfile, profile, isAuthenticated } = useProfile();
-  const { hapticFeedback } = useTelegram();
+  const { hapticFeedback, user: telegramUser } = useTelegram();
+  const { user: authUser } = useAuth();
   const queryClient = useQueryClient();
   const [hasAwardedBadge, setHasAwardedBadge] = useState(false);
+  const [lastAuthUserId, setLastAuthUserId] = useState<string | null>(null);
 
   const walletAddress = wallet?.account?.address || null;
   const isConnected = !!wallet;
+
+  // Disconnect wallet when user changes (e.g., from referral link)
+  useEffect(() => {
+    if (authUser?.id && lastAuthUserId && authUser.id !== lastAuthUserId) {
+      console.log("User changed. Disconnecting wallet...");
+      tonConnectUI.disconnect();
+      setHasAwardedBadge(false);
+    }
+    
+    if (authUser?.id) {
+      setLastAuthUserId(authUser.id);
+    }
+  }, [authUser?.id, lastAuthUserId, tonConnectUI]);
+
+  // Reset badge award state when user changes
+  useEffect(() => {
+    if (authUser?.id !== lastAuthUserId) {
+      setHasAwardedBadge(false);
+    }
+  }, [authUser?.id, lastAuthUserId]);
 
   // Sync wallet to profile and award badge when connected
   useEffect(() => {

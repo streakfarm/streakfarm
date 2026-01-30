@@ -27,24 +27,58 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
+// Helper function to completely clear all local/session storage
+function clearAllStorage() {
+  try {
+    // Clear localStorage
+    const keysToKeep = ['theme', 'language']; // Keep non-auth related keys
+    Object.keys(localStorage).forEach(key => {
+      if (!keysToKeep.includes(key)) {
+        localStorage.removeItem(key);
+      }
+    });
+    
+    // Clear sessionStorage
+    sessionStorage.clear();
+    
+    // Clear IndexedDB (used by TonConnect)
+    if (window.indexedDB) {
+      const dbs = ['tonconnect', 'supabase'];
+      dbs.forEach(dbName => {
+        try {
+          const req = indexedDB.deleteDatabase(dbName);
+          req.onsuccess = () => console.log(`Cleared IndexedDB: ${dbName}`);
+        } catch (e) {
+          console.log(`Could not clear IndexedDB: ${dbName}`);
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Error clearing storage:', error);
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
-  const { initData, isReady, isTelegram, hapticFeedback, startParam } = useTelegram();
+  const { initData, isReady, isTelegram, hapticFeedback } = useTelegram();
   const queryClient = useQueryClient();
   
-  // Use a ref to ensure we only attempt login ONCE per session/mount
+  // Use refs to track state
   const loginAttempted = useRef(false);
   const lastTelegramIdRef = useRef<number | null>(null);
+  const sessionInitializedRef = useRef(false);
 
   // 1. Listen for Auth State Changes
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
-      console.log('Auth event:', event);
+      console.log('Auth event:', event, 'Session:', !!currentSession);
       setSession(currentSession);
+      
       if (currentSession) {
         setIsLoading(false);
+        sessionInitializedRef.current = true;
       }
     });
 
@@ -53,17 +87,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(currentSession);
       if (currentSession) {
         setIsLoading(false);
+        sessionInitializedRef.current = true;
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // 2. The Official Auto-Login Flow with Referral Support
+  // 2. The Official Auto-Login Flow with Complete Session Cleanup
   const performAutoLogin = useCallback(async () => {
     if (!isTelegram || !initData) {
       console.log("Not in Telegram environment. Skipping auto-login.");
-      setIsLoading(false);
+      if (!sessionInitializedRef.current) {
+        setIsLoading(false);
+      }
       return;
     }
 
@@ -75,17 +112,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!currentTelegramId) {
       console.log("No Telegram user ID found");
-      setIsLoading(false);
+      if (!sessionInitializedRef.current) {
+        setIsLoading(false);
+      }
       return;
     }
 
     // Check if this is a different user (referral link case)
     if (lastTelegramIdRef.current && lastTelegramIdRef.current !== currentTelegramId) {
-      console.log("Different Telegram user detected. Logging out previous session...");
-      // Force logout the previous session
+      console.log("Different Telegram user detected. Clearing all storage and logging out...");
+      
+      // Complete cleanup
+      clearAllStorage();
       await supabase.auth.signOut();
+      
+      // Reset all refs
       loginAttempted.current = false;
+      sessionInitializedRef.current = false;
+      
+      // Clear query cache
       queryClient.clear();
+      
+      // Small delay to ensure cleanup is complete
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     lastTelegramIdRef.current = currentTelegramId;
@@ -93,7 +142,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // If already logged in and it's the same user, skip
     if (session && session.user?.user_metadata?.telegram_id === currentTelegramId) {
       console.log("Already logged in as this user");
-      setIsLoading(false);
+      if (!sessionInitializedRef.current) {
+        setIsLoading(false);
+      }
       return;
     }
 
@@ -136,6 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         console.log("Auto-login successful!");
         hapticFeedback('success');
+        sessionInitializedRef.current = true;
       } else {
         throw new Error("Invalid response from auth server");
       }
@@ -143,7 +195,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error("Auto-login failed:", err.message);
       setAuthError(err.message);
       toast.error("Login failed. Please reload the app.");
-    } finally {
       setIsLoading(false);
     }
   }, [isTelegram, initData, session, hapticFeedback, queryClient]);
@@ -156,19 +207,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [isReady, performAutoLogin]);
 
   const signOut = async () => {
+    clearAllStorage();
     await supabase.auth.signOut();
     setSession(null);
     loginAttempted.current = false;
     lastTelegramIdRef.current = null;
+    sessionInitializedRef.current = false;
     queryClient.clear();
   };
+
+  // Show loading state while initializing to prevent blinking
+  if (isLoading) {
+    return (
+      <AuthContext.Provider
+        value={{
+          session: null,
+          user: null,
+          isLoading: true,
+          isAuthenticated: false,
+          authError,
+          signOut,
+        }}
+      >
+        <div className="flex items-center justify-center w-full h-screen bg-background">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+            <p className="text-muted-foreground text-sm">Initializing...</p>
+          </div>
+        </div>
+      </AuthContext.Provider>
+    );
+  }
 
   return (
     <AuthContext.Provider
       value={{
         session,
         user: session?.user ?? null,
-        isLoading,
+        isLoading: false,
         isAuthenticated: !!session,
         authError,
         signOut,
