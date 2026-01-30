@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useTelegram } from './useTelegram';
-import { useEffect } from 'react';
+import { useAuth } from '@/providers/AuthProvider';
 
 export interface Profile {
   id: string;
@@ -19,6 +19,7 @@ export interface Profile {
   total_referrals: number;
   wallet_address: string | null;
   wallet_type: string | null;
+  wallet_connected_at: string | null;
   ref_code: string;
   multiplier_permanent: number;
   created_at: string;
@@ -35,37 +36,47 @@ export interface LeaderboardEntry {
   referral_count: number;
 }
 
+// Cache configuration
+const PROFILE_CACHE_TIME = 5 * 60 * 1000; // 5 minutes
+const STALE_TIME = 30 * 1000; // 30 seconds
+
 export function useProfile() {
   const { user, isReady } = useTelegram();
+  const { user: authUser, isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
 
-  // For development, we'll use a mock auth session
-  const { data: session } = useQuery({
-    queryKey: ['session'],
+  // Get profile with optimized caching
+  const { 
+    data: profile, 
+    isLoading: profileLoading, 
+    error: profileError,
+    isFetching: profileFetching 
+  } = useQuery({
+    queryKey: ['profile', authUser?.id],
     queryFn: async () => {
-      const { data } = await supabase.auth.getSession();
-      return data.session;
-    },
-  });
-
-  const { data: profile, isLoading, error } = useQuery({
-    queryKey: ['profile', session?.user?.id],
-    queryFn: async () => {
-      if (!session?.user?.id) return null;
+      if (!authUser?.id) return null;
       
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('user_id', session.user.id)
+        .eq('user_id', authUser.id)
         .single();
       
       if (error) throw error;
       return data as Profile;
     },
-    enabled: !!session?.user?.id,
+    enabled: !!authUser?.id && isAuthenticated,
+    staleTime: STALE_TIME,
+    gcTime: PROFILE_CACHE_TIME,
+    refetchOnWindowFocus: false,
+    refetchOnMount: true,
   });
 
-  const { data: leaderboardEntry } = useQuery({
+  // Get leaderboard entry - parallel query
+  const { 
+    data: leaderboardEntry,
+    isLoading: leaderboardLoading 
+  } = useQuery({
     queryKey: ['leaderboard-entry', profile?.id],
     queryFn: async () => {
       if (!profile?.id) return null;
@@ -80,9 +91,16 @@ export function useProfile() {
       return data as LeaderboardEntry | null;
     },
     enabled: !!profile?.id,
+    staleTime: STALE_TIME,
+    gcTime: PROFILE_CACHE_TIME,
+    refetchOnWindowFocus: false,
   });
 
-  const { data: totalMultiplier } = useQuery({
+  // Get total multiplier - parallel query
+  const { 
+    data: totalMultiplier,
+    isLoading: multiplierLoading 
+  } = useQuery({
     queryKey: ['multiplier', profile?.id],
     queryFn: async () => {
       if (!profile?.id) return 1;
@@ -94,30 +112,57 @@ export function useProfile() {
       return data as number;
     },
     enabled: !!profile?.id,
+    staleTime: STALE_TIME * 2, // Multiplier changes less frequently
+    gcTime: PROFILE_CACHE_TIME,
+    refetchOnWindowFocus: false,
   });
 
-  // Only allow safe profile updates (non-game-critical fields)
+  // Get referral stats - parallel query
+  const { 
+    data: referralStats,
+    isLoading: referralLoading 
+  } = useQuery({
+    queryKey: ['referral-stats', profile?.id],
+    queryFn: async () => {
+      if (!profile?.id) return { count: 0, earned: 0 };
+      
+      // Get actual referral count from referrals table
+      const { count, error } = await supabase
+        .from('referrals')
+        .select('*', { count: 'exact', head: true })
+        .eq('referrer_id', profile.id)
+        .eq('is_valid', true);
+      
+      if (error) throw error;
+      
+      return { 
+        count: count || 0,
+        earned: (count || 0) * 1000 // 1000 points per referral
+      };
+    },
+    enabled: !!profile?.id,
+    staleTime: STALE_TIME,
+    gcTime: PROFILE_CACHE_TIME,
+    refetchOnWindowFocus: false,
+  });
+
+  // Optimistic update for profile
   const updateProfile = useMutation({
-    mutationFn: async (updates: { wallet_address?: string | null; wallet_type?: string | null }) => {
+    mutationFn: async (updates: { 
+      wallet_address?: string | null; 
+      wallet_type?: string | null;
+      first_name?: string;
+      username?: string;
+      avatar_url?: string;
+    }) => {
       if (!profile?.id) throw new Error('No profile');
-      
-      // Only allow wallet-related fields for client-side updates
-      const safeUpdates: { wallet_address?: string | null; wallet_type?: string | null } = {};
-      
-      if ('wallet_address' in updates) {
-        safeUpdates.wallet_address = updates.wallet_address;
-      }
-      if ('wallet_type' in updates) {
-        safeUpdates.wallet_type = updates.wallet_type;
-      }
-      
-      if (Object.keys(safeUpdates).length === 0) {
-        throw new Error('No valid fields to update');
-      }
       
       const { data, error } = await supabase
         .from('profiles')
-        .update(safeUpdates)
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', profile.id)
         .select()
         .single();
@@ -125,18 +170,53 @@ export function useProfile() {
       if (error) throw error;
       return data;
     },
+    onMutate: async (updates) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['profile'] });
+      
+      // Snapshot previous value
+      const previousProfile = queryClient.getQueryData(['profile', authUser?.id]);
+      
+      // Optimistically update
+      queryClient.setQueryData(['profile', authUser?.id], (old: Profile | undefined) => {
+        if (!old) return old;
+        return { ...old, ...updates };
+      });
+      
+      return { previousProfile };
+    },
+    onError: (err, updates, context) => {
+      // Rollback on error
+      if (context?.previousProfile) {
+        queryClient.setQueryData(['profile', authUser?.id], context.previousProfile);
+      }
+    },
     onSuccess: () => {
+      // Invalidate and refetch
       queryClient.invalidateQueries({ queryKey: ['profile'] });
     },
   });
+
+  // Refresh profile data
+  const refreshProfile = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['profile'] });
+    await queryClient.invalidateQueries({ queryKey: ['leaderboard-entry'] });
+    await queryClient.invalidateQueries({ queryKey: ['multiplier'] });
+    await queryClient.invalidateQueries({ queryKey: ['referral-stats'] });
+  };
+
+  const isLoading = profileLoading || leaderboardLoading || multiplierLoading || referralLoading;
 
   return {
     profile,
     leaderboardEntry,
     totalMultiplier: totalMultiplier || 1,
+    referralStats: referralStats || { count: profile?.total_referrals || 0, earned: (profile?.total_referrals || 0) * 1000 },
     isLoading,
-    error,
+    isFetching: profileFetching,
+    error: profileError,
     updateProfile,
-    isAuthenticated: !!session?.user,
+    refreshProfile,
+    isAuthenticated: !!authUser && isAuthenticated,
   };
 }
