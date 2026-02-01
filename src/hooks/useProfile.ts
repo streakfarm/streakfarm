@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useTelegram } from './useTelegram';
-import { useEffect } from 'react';
+import { useAuth } from '@/providers/AuthProvider';
+import { useEffect, useState } from 'react';
 
 export interface Profile {
   id: string;
@@ -36,35 +37,43 @@ export interface LeaderboardEntry {
 }
 
 export function useProfile() {
-  const { user, isReady } = useTelegram();
+  const { user: authUser } = useAuth();
   const queryClient = useQueryClient();
+  const [initialProfile, setInitialProfile] = useState<Profile | null>(null);
 
-  // For development, we'll use a mock auth session
-  const { data: session } = useQuery({
-    queryKey: ['session'],
-    queryFn: async () => {
-      const { data } = await supabase.auth.getSession();
-      return data.session;
-    },
-  });
+  // Try to get profile from auth session metadata first (instant load)
+  useEffect(() => {
+    if (authUser?.id) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user?.user_metadata?.profile) {
+          setInitialProfile(session.user.user_metadata.profile as Profile);
+        }
+      });
+    }
+  }, [authUser?.id]);
 
+  // Fetch profile with caching strategy
   const { data: profile, isLoading, error } = useQuery({
-    queryKey: ['profile', session?.user?.id],
+    queryKey: ['profile', authUser?.id],
     queryFn: async () => {
-      if (!session?.user?.id) return null;
+      if (!authUser?.id) return null;
       
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('user_id', session.user.id)
+        .eq('id', authUser.id)
         .single();
       
       if (error) throw error;
       return data as Profile;
     },
-    enabled: !!session?.user?.id,
+    enabled: !!authUser?.id,
+    staleTime: 30000, // 30 seconds
+    gcTime: 5 * 60 * 1000, // 5 minutes
+    initialData: initialProfile || undefined,
   });
 
+  // Fetch leaderboard entry with caching
   const { data: leaderboardEntry } = useQuery({
     queryKey: ['leaderboard-entry', profile?.id],
     queryFn: async () => {
@@ -80,8 +89,11 @@ export function useProfile() {
       return data as LeaderboardEntry | null;
     },
     enabled: !!profile?.id,
+    staleTime: 60000, // 1 minute
+    gcTime: 10 * 60 * 1000, // 10 minutes
   });
 
+  // Fetch multiplier with caching
   const { data: totalMultiplier } = useQuery({
     queryKey: ['multiplier', profile?.id],
     queryFn: async () => {
@@ -94,6 +106,8 @@ export function useProfile() {
       return data as number;
     },
     enabled: !!profile?.id,
+    staleTime: 60000, // 1 minute
+    gcTime: 10 * 60 * 1000, // 10 minutes
   });
 
   // Only allow safe profile updates (non-game-critical fields)
@@ -134,9 +148,9 @@ export function useProfile() {
     profile,
     leaderboardEntry,
     totalMultiplier: totalMultiplier || 1,
-    isLoading,
+    isLoading: isLoading && !initialProfile, // Show loading only if no initial data
     error,
     updateProfile,
-    isAuthenticated: !!session?.user,
+    isAuthenticated: !!authUser,
   };
 }

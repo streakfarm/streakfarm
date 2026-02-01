@@ -52,17 +52,37 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Get user profile
+    // Get user profile - use id (which is the user_id in auth)
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select("id, wallet_address, raw_points")
-      .eq("user_id", user.id)
+      .eq("id", user.id)
       .maybeSingle();
 
-    if (profileError || !profile) {
+    if (profileError) {
+      console.error("Profile error:", profileError);
+      return new Response(
+        JSON.stringify({ error: "Failed to fetch profile" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!profile) {
       return new Response(
         JSON.stringify({ error: "Profile not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check if wallet already connected
+    if (profile.wallet_address) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          message: "Wallet already connected",
+          wallet_address: profile.wallet_address,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -142,12 +162,11 @@ Deno.serve(async (req) => {
     const { data: config } = await supabaseAdmin
       .from("admin_config")
       .select("value")
-      .eq("id", "game_config")
+      .eq("key", "wallet_connect_bonus")
       .maybeSingle();
 
     if (config?.value) {
-      const gameConfig = config.value as Record<string, unknown>;
-      walletBonus = (gameConfig.wallet_connect_bonus as number) || 2000;
+      walletBonus = parseInt(config.value as string) || 2000;
     }
 
     // Update profile with wallet info and bonus points
@@ -164,10 +183,14 @@ Deno.serve(async (req) => {
 
     if (updateError) {
       console.error("Error updating profile:", updateError);
+      return new Response(
+        JSON.stringify({ error: "Failed to update profile" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Add to points ledger
-    await supabaseAdmin
+    const { error: ledgerError } = await supabaseAdmin
       .from("points_ledger")
       .insert({
         user_id: profile.id,
@@ -177,8 +200,12 @@ Deno.serve(async (req) => {
         description: "Bonus for connecting TON wallet",
       });
 
+    if (ledgerError) {
+      console.error("Error adding to ledger:", ledgerError);
+    }
+
     // Log event
-    await supabaseAdmin
+    const { error: eventError } = await supabaseAdmin
       .from("events")
       .insert({
         user_id: profile.id,
@@ -190,12 +217,17 @@ Deno.serve(async (req) => {
         },
       });
 
+    if (eventError) {
+      console.error("Error logging event:", eventError);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
         badge_id: "ton-holder",
-        badge_name: badge.name,
+        badge_name: badge?.name || "TON Holder",
         points_awarded: walletBonus,
+        wallet_address: walletAddress,
         message: "Wallet badge awarded successfully!",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
