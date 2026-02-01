@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useRef, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useTelegram } from '@/hooks/useTelegram';
@@ -95,10 +95,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // 2. The Official Auto-Login Flow with Complete Session Cleanup
-  const performAutoLogin = useCallback(async () => {
-    if (!isTelegram || !initData) {
-      console.log("Not in Telegram environment. Skipping auto-login.");
-      if (!sessionInitializedRef.current) {
+  useEffect(() => {
+    if (!isReady || !isTelegram || !initData) {
+      console.log("Not ready for auto-login yet");
+      if (sessionInitializedRef.current) {
         setIsLoading(false);
       }
       return;
@@ -112,42 +112,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!currentTelegramId) {
       console.log("No Telegram user ID found");
-      if (!sessionInitializedRef.current) {
-        setIsLoading(false);
-      }
+      setIsLoading(false);
       return;
     }
 
     // Check if this is a different user (referral link case)
     if (lastTelegramIdRef.current && lastTelegramIdRef.current !== currentTelegramId) {
       console.log("Different Telegram user detected. Clearing all storage and logging out...");
-      
-      // Complete cleanup
       clearAllStorage();
-      await supabase.auth.signOut();
-      
-      // Reset all refs
+      supabase.auth.signOut();
       loginAttempted.current = false;
-      sessionInitializedRef.current = false;
-      
-      // Clear query cache
       queryClient.clear();
-      
-      // Small delay to ensure cleanup is complete
-      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     lastTelegramIdRef.current = currentTelegramId;
 
     // If already logged in and it's the same user, skip
-    if (session && session.user?.user_metadata?.telegram_id === currentTelegramId) {
+    if (session?.user?.user_metadata?.telegram_id === currentTelegramId) {
       console.log("Already logged in as this user");
-      if (!sessionInitializedRef.current) {
-        setIsLoading(false);
-      }
+      setIsLoading(false);
       return;
     }
 
+    // If already attempted login, don't try again
     if (loginAttempted.current) {
       console.log("Login already attempted");
       return;
@@ -157,54 +144,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     console.log("Starting Official Telegram Auto-Login...");
 
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-auth`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: JSON.stringify({ initData }),
+    const performLogin = async () => {
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-auth`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            },
+            body: JSON.stringify({ initData }),
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || 'Authentication failed');
         }
-      );
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Authentication failed');
+        if (result.session) {
+          const { error } = await supabase.auth.setSession(result.session);
+          if (error) throw error;
+          console.log("Auto-login successful!");
+          sessionInitializedRef.current = true;
+        } else {
+          throw new Error("Invalid response from auth server");
+        }
+      } catch (err: any) {
+        console.error("Auto-login failed:", err.message);
+        setAuthError(err.message);
+        toast.error("Login failed. Please reload the app.");
+        setIsLoading(false);
       }
+    };
 
-      if (result.session || (result.access_token && result.refresh_token)) {
-        const sessionToSet = result.session || {
-          access_token: result.access_token,
-          refresh_token: result.refresh_token,
-        };
-
-        const { error } = await supabase.auth.setSession(sessionToSet);
-        if (error) throw error;
-        
-        console.log("Auto-login successful!");
-        hapticFeedback('success');
-        sessionInitializedRef.current = true;
-      } else {
-        throw new Error("Invalid response from auth server");
-      }
-    } catch (err: any) {
-      console.error("Auto-login failed:", err.message);
-      setAuthError(err.message);
-      toast.error("Login failed. Please reload the app.");
-      setIsLoading(false);
-    }
-  }, [isTelegram, initData, session, hapticFeedback, queryClient]);
-
-  // Trigger login when Telegram is ready
-  useEffect(() => {
-    if (isReady) {
-      performAutoLogin();
-    }
-  }, [isReady, performAutoLogin]);
+    performLogin();
+  }, [isReady, isTelegram, initData]);
 
   const signOut = async () => {
     clearAllStorage();
